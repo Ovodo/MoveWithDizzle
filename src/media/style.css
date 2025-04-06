@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+* {
+    /* border:1px solid black */
+}
+
+.structList {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}

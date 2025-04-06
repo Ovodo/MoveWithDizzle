@@ -43,7 +43,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [
-        vscode.Uri.file(path.join(this._context.extensionPath, "media")),
+        vscode.Uri.file(path.join(this._context.extensionPath, "src", "media")),
       ],
     };
 
@@ -54,7 +54,10 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     this.sendInitialStructs();
 
     // Set webview HTML with full struct creation interface
-    webviewView.webview.html = this.getWebviewContent();
+    webviewView.webview.html = this.getWebviewContent(
+      this._context,
+      webviewView.webview
+    );
     this.refreshView();
 
     webviewView.webview.onDidReceiveMessage(
@@ -62,12 +65,12 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
         console.log("Received message:", message);
         switch (message.command) {
           case "createStruct":
-            console.log("Creawtings struct:", message.name.length);
-            // console.log("Creating struct:", message.struct);
+            // console.log("Creawtings struct:", message.name.length);
+            console.log("Creating struct:", message.struct);
             this.createStruct(message.struct);
             return;
           case "editStruct":
-            console.log("Editing struct:", message.name.length);
+            // console.log("Editing struct:", message.name.length);
             this.editStruct(message.struct);
             return;
           case "requestDeleteStruct":
@@ -92,7 +95,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
             this.sendInitialStructs();
             return;
           default:
-            console.log("Unknown command:", message.command);
+            console.log("Unknown command:", message?.command);
         }
       },
       undefined,
@@ -114,324 +117,31 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     this.sendInitialStructs();
   }
 
-  private getWebviewContent(): string {
-    return `
-        <!DOCTYPE html>
-        <html lang="en">
-        <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1.0">
-          <title>Move Structs</title>
-          <style>
-            body { font-family: -apple-system, BlinkMacSystemFont, sans-serif; padding: 10px; }
-            .struct-form { 
-              display: flex;
-              flex-direction: column;
-              gap: 10px; 
-              margin-bottom: 20px; 
-              border: 1px solid #ddd; 
-              padding: 15px; 
-              border-radius: 5px; 
-            }
-            .field-row { display: flex; gap: 10px; width: 100%; margin-bottom: 5px; }
-            .field-name { width: 50%; }
-            .struct-list { margin-top: 20px; }
-            button { cursor: pointer; margin-right: 5px; }
-            #structList details { margin-bottom: 10px; }
-            .struct-actions { display: flex; margin-top: 10px; }
-          </style>
-        </head>
-        <body>
-          <h2>Move Struct Creator</h2>
-          
-          <form id="structForm" class="struct-form">
-            <input type="text" id="structName" placeholder="Struct Name" required>
-            <input type="hidden" id="originalStructName" value="">
-            
-            <div>
-              <label>Abilities:</label>
-              <div>
-                <input type="checkbox" id="store" name="ability" value="store">
-                <label for="store">store</label>
-                <input type="checkbox" id="key" name="ability" value="key">
-                <label for="key">key</label>
-                <input type="checkbox" id="copy" name="ability" value="copy">
-                <label for="copy">copy</label>
-                <input type="checkbox" id="drop" name="ability" value="drop">
-                <label for="drop">drop</label>
-              </div>
-            </div>
-            
-            <div id="fieldsContainer">
-              <div class="field-row">
-                <input type="text" class="field-name" placeholder="Field Name" required>
-                <select class="field-type">
-                  <!-- Default types -->
-                  <option value="u64">u64</option>
-                  <option value="u8">u8</option>
-                  <option value="u128">u128</option>
-                  <option value="address">address</option>
-                  <option value="bool">bool</option>
-                  <option value="vector">vector</option>
-                </select>
-                <button type="button" onclick="addField()">+</button>
-              </div>
-            </div>
-            
-            <button type="submit" id="submitButton">Create Struct</button>
-            <button type="button" id="cancelEditButton" style="display:none;">Cancel Edit</button>
-          </form>
-  
-          <div class="struct-list" id="structList">
-            <h3>Saved Structs</h3>
-            <!-- Structs will be dynamically populated here -->
-          </div>
-  
-          <script>
-            const vscode = acquireVsCodeApi();
-            const persistedState = vscode.getState() || { structs: [] };
-  
-            // Default type options
-            const defaultTypes = [
-              { value: "u64", label: "u64" },
-              { value: "u8", label: "u8" },
-              { value: "u128", label: "u128" },
-              { value: "address", label: "address" },
-              { value: "bool", label: "bool" },
-              { value: "vector", label: "vector" }
-            ];
-  
-            // Populate each select.field-type with default options and existing struct names
-            function populateTypeOptions(existingStructs) {
-              // Create additional options from existing structs (if any)
-              const structOptions = existingStructs.map(s => ({ value: s.name, label: s.name }));
-              // Merge default options and struct options (avoid duplicates)
-              const allOptions = [...defaultTypes];
-              structOptions.forEach(opt => {
-                if (!allOptions.find(o => o.value === opt.value)) {
-                  allOptions.push(opt);
-                }
-              });
-  
-              document.querySelectorAll("select.field-type").forEach(select => {
-                const currentValue = select.value;
-                select.innerHTML = "";
-                allOptions.forEach(opt => {
-                  const optionEl = document.createElement("option");
-                  optionEl.value = opt.value;
-                  optionEl.textContent = opt.label;
-                  if (currentValue === opt.value) {
-                    optionEl.selected = true;
-                  }
-                  select.appendChild(optionEl);
-                });
-              });
-            }
-  
-            function addField() {
-              const container = document.getElementById('fieldsContainer');
-              const newFieldRow = document.createElement('div');
-              newFieldRow.className = 'field-row';
-              newFieldRow.innerHTML = \`
-                <input type="text" class="field-name" placeholder="Field Name" required>
-                <select class="field-type">
-                  <!-- Options will be populated by populateTypeOptions -->
-                </select>
-                <button type="button" onclick="this.parentElement.remove()">-</button>
-              \`;
-              container.appendChild(newFieldRow);
-              // Re-populate type options after adding new row
-              populateTypeOptions(persistedState.structs || []);
-            }
-  
-            function resetForm() {
-              document.getElementById('structName').value = '';
-              document.getElementById('originalStructName').value = '';
-              document.querySelectorAll('input[name="ability"]:checked').forEach(checkbox => checkbox.checked = false);
-              const fieldsContainer = document.getElementById('fieldsContainer');
-              fieldsContainer.innerHTML = \`
-                <div class="field-row">
-                  <input type="text" class="field-name" placeholder="Field Name" required>
-                  <select class="field-type">
-                    <!-- Options will be populated -->
-                  </select>
-                  <button type="button" onclick="addField()">+</button>
-                </div>
-              \`;
-              // Populate type options in the reset row
-              populateTypeOptions(persistedState.structs || []);
-              document.getElementById('submitButton').textContent = 'Create Struct';
-              document.getElementById('cancelEditButton').style.display = 'none';
-            }
-  
-            document.getElementById('cancelEditButton').addEventListener('click', resetForm);
-  
-            // Create new struct (default operation)
-            function createStruct() {
-              const structName = document.getElementById('structName').value;
-              const capitalizedStructName = structName.charAt(0).toUpperCase() + structName.slice(1);
-              const abilities = Array.from(document.querySelectorAll('input[name="ability"]:checked'))
-                .map(checkbox => checkbox.value);
-              
-              const fields = Array.from(document.querySelectorAll('#fieldsContainer .field-row'))
-                .filter(row => row.querySelector('.field-name') && row.querySelector('.field-type'))
-                .map(row => ({
-                  name: row.querySelector('.field-name').value,
-                  type: row.querySelector('.field-type').value
-                }));
-  
-              const struct = { name: capitalizedStructName, abilities, fields };
-  
-              vscode.postMessage({
-                command: 'createStruct',
-                struct: struct
-              });
-  
-              resetForm();
-            }
-  
-            // Update existing struct
-            function updateStruct() {
-              const structName = document.getElementById('structName').value;
-              const originalStructName = document.getElementById('originalStructName').value;
-              const abilities = Array.from(document.querySelectorAll('input[name="ability"]:checked'))
-                .map(checkbox => checkbox.value);
-              
-              const fields = Array.from(document.querySelectorAll('#fieldsContainer .field-row'))
-                .filter(row => row.querySelector('.field-name') && row.querySelector('.field-type'))
-                .map(row => ({
-                  name: row.querySelector('.field-name').value,
-                  type: row.querySelector('.field-type').value
-                }));
-  
-              const struct = { name: structName, abilities, fields };
-  
-              vscode.postMessage({
-                command: 'editStruct',
-                struct: struct,
-                name: originalStructName
-              });
-  
-              resetForm();
-            }
-  
-            // Override form submit behavior with onClick for the button
-            document.getElementById('submitButton').onclick = function(e) {
-              e.preventDefault();
-              const originalStructName = document.getElementById('originalStructName').value;
-              if (originalStructName) {
-                updateStruct();
-              } else {
-                createStruct();
-              }
-            };
-  
-            // Handle incoming messages to update struct list and repopulate type options
-            window.addEventListener('message', event => {
-              const message = event.data;
-              if (message.command === 'updateStructList' || message.command === 'initialStructs') {
-                updateStructList(message.structs);
-              }
-            });
-  
-            function updateStructList(structs) {
-              // Update persisted state so we have the latest structs for type options
-              persistedState.structs = structs;
-              const structList = document.getElementById('structList');
-              structList.innerHTML = '<h3>Saved Structs</h3>';
-              structs.forEach(struct => {
-                const structItem = document.createElement('details');
-                structItem.innerHTML = \`
-                  <summary>\${struct.name}</summary>
-                  <p><strong>Abilities:</strong> \${struct.abilities.join(', ') || 'None'}</p>
-                  <p><strong>Fields:</strong></p>
-                  <ul>
-                    \${struct.fields.map(field => \`<li>\${field.name}: \${field.type}</li>\`).join('')}
-                  </ul>
-                  <div class="struct-actions">
-                    <button onclick="editStruct('\${struct.name}')">Edit</button>
-                    <button class="delete-button" onclick="deleteStruct('\${struct.name}')">Delete</button>
-                  </div>
-                \`;
-                structList.appendChild(structItem);
-              });
-  
-              // Re-populate type options for all select elements with updated structs
-              populateTypeOptions(structs);
-              vscode.setState({ structs });
-            }
-  
-            function editStruct(structName) {
-              const struct = vscode.getState().structs.find(s => s.name === structName);
-              if (struct) {
-                // Uncheck all ability checkboxes first
-                document.querySelectorAll('input[name="ability"]').forEach(checkbox => {
-                  checkbox.checked = false;
-                });
-  
-                // Populate form with struct details
-                document.getElementById('structName').value = struct.name;
-                document.getElementById('originalStructName').value = struct.name;
-  
-                // Set abilities
-                struct.abilities.forEach(ability => {
-                  const checkbox = document.getElementById(ability);
-                  if (checkbox) checkbox.checked = true;
-                });
-  
-                // Clear existing fields
-                const fieldsContainer = document.getElementById('fieldsContainer');
-                fieldsContainer.innerHTML = '';
-                
-                // Add fields for the struct
-                struct.fields.forEach((field) => {
-                  const newFieldRow = document.createElement('div');
-                  newFieldRow.className = 'field-row';
-                  newFieldRow.innerHTML = \`
-                    <input type="text" class="field-name" placeholder="Field Name" value="\${field.name}" required>
-                    <select class="field-type">
-                    </select>
-                    <button type="button" onclick="this.parentElement.remove()">-</button>
-                  \`;
-                  fieldsContainer.appendChild(newFieldRow);
-                });
-                
-                // Add new field button
-                const addFieldButton = document.createElement('div');
-                addFieldButton.className = 'field-row';
-                addFieldButton.innerHTML = \`
-                  <button type="button" onclick="addField()">+</button>
-                \`;
-                fieldsContainer.appendChild(addFieldButton);
-  
-                // Populate the select options for these new field rows
-                populateTypeOptions(vscode.getState().structs);
-  
-                // Change submit button text and show cancel button
-                document.getElementById('submitButton').textContent = 'Update Struct';
-                document.getElementById('submitButton').onclick = function(e) {
-                  e.preventDefault();
-                  updateStruct();
-                };
-                document.getElementById('cancelEditButton').style.display = 'inline-block';
-              }
-            }
-  
-            function deleteStruct(structName) {
-              vscode.postMessage({
-                command: "requestDeleteStruct",
-                structName: structName
-              });
-            }
-  
-            // Request initial structs when view loads
-            vscode.postMessage({
-              command: 'loadInitialStructs'
-            });
-          </script>
-        </body>
-        </html>
-      `;
+  private getWebviewContent(
+    context: vscode.ExtensionContext,
+    webview: vscode.Webview
+  ): string {
+    const htmlPath = path.join(
+      context.extensionPath,
+      "src",
+      "media",
+      "structs.html"
+    );
+    let html = fs.readFileSync(htmlPath, "utf8");
+
+    const styleUri = webview.asWebviewUri(
+      vscode.Uri.file(
+        path.join(context.extensionPath, "src", "media", "style.css")
+      )
+    );
+
+    // Inject the CSS link before </head>
+    html = html.replace(
+      "</head>",
+      `<link rel="stylesheet" href="${styleUri}"/></head>`
+    );
+
+    return html;
   }
 
   private updateMoveFile() {
@@ -455,6 +165,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     text = text.replace(/\n\s*\n/g, "\n").trim();
 
     // Step 3: Update or add structs that exist in this._structs
+    const structDeclarations: string[] = [];
     this._structs.forEach((struct) => {
       const structRegex = new RegExp(
         `(?:public\\s+)?struct\\s+${struct.name}\\s*(?:has\\s+(?:key|store|copy|drop)(?:\\s*,\\s*(?:key|store|copy|drop))*)?\\s*{[^}]*}`,
@@ -466,17 +177,47 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
           ? `has ${struct.abilities.join(", ")} `
           : "";
 
+      const childTypes = ["Option", "vector"];
+      console.log(struct.fields, "fields");
       const newStructText =
         `public struct ${struct.name} ${abilitiesString}{\n` +
-        struct.fields.map((f) => `  ${f.name}: ${f.type},`).join("\n") +
+        struct.fields
+          .map(
+            (f) =>
+              `  ${f.name}: ${
+                childTypes.includes(f.type) ? f.type.concat("<>") : f.type
+              },`
+          )
+          .join("\n") +
         `\n}`;
 
       if (text.match(structRegex)) {
         text = text.replace(structRegex, newStructText);
       } else {
-        text += `\n\n${newStructText}`;
+        structDeclarations.push(newStructText);
       }
     });
+
+    // Append new structs below the last struct declaration
+    if (structDeclarations.length > 0) {
+      const lastStructMatch = text.match(
+        /(?:public\s+)?struct\s+\w+\s*(?:has\s+(?:key|store|copy|drop)(?:\s*,\s*(?:key|store|copy|drop))*)?\s*{[^}]*}/g
+      );
+      const lastStructIndex = lastStructMatch
+        ? text.lastIndexOf(lastStructMatch[lastStructMatch.length - 1])
+        : -1;
+
+      if (lastStructIndex !== -1) {
+        const insertPosition = text.indexOf("}", lastStructIndex) + 1; // Find the end of the last struct
+        text =
+          text.slice(0, insertPosition) +
+          `\n\n` +
+          structDeclarations.join("\n\n") +
+          text.slice(insertPosition);
+      } else {
+        text += `\n\n${structDeclarations.join("\n\n")}`;
+      }
+    }
 
     // Apply changes to the editor
     editor.edit((editBuilder) => {
