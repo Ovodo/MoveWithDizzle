@@ -129,7 +129,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
     const workflow = new StateGraph(GraphState)
       .addNode("agent", (state: any) => this.agent(state))
-      .addNode("retrieve", new ToolNode<typeof GraphState.State>(tools))
+      .addNode("retrieve", new ToolNode<any>(tools))
       .addNode("gradeDocuments", (state: any) => this.gradeDocuments(state))
       .addNode("generate", (state: any) => this.generate(state))
       .addNode("analyzeMoveCode", (state: any) => this.analyzeMoveCode(state));
@@ -145,7 +145,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
       (state: any) => this.checkRelevance(state),
       {
         yes: "generate",
-        no: "generate",
+        no: END,
       }
     );
     workflow.addEdge("generate", END);
@@ -264,10 +264,6 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
         for (const [key, value] of Object.entries(output)) {
           // @ts-ignore - access messages property of the output
           const lastMsg = output[key].messages[output[key].messages.length - 1];
-          console.log(
-            `Output from node: '${key}'\n ${JSON.stringify(value, null, 2)}`
-          );
-
           if (
             key === "generate" ||
             (key === "agent" && this.shouldRetrieve(output[key]) === "__end__")
@@ -374,7 +370,6 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
   private async analyzeMoveCode(state: any): Promise<any> {
     const { ChatPromptTemplate } = await import("@langchain/core/prompts");
     const { ChatOpenAI } = await import("@langchain/openai");
-    const { ToolMessage } = await import("@langchain/core/messages");
 
     const { messages } = state;
     // Check if the user's message contains Move code
@@ -387,7 +382,6 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
     if (!containsCode) {
       // Skip analysis if no code detected
-      console.log("No Code Detected");
       return { messages };
     }
 
@@ -405,19 +399,19 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     const prompt = ChatPromptTemplate.fromTemplate(
       `You are an expert Sui Move code analyzer. Analyze the following Move code for bugs, security issues, and best practices:
 
-      \`\`\`move
-      {code}
-      \`\`\`
+        \`\`\`move
+        {code}
+        \`\`\`
 
-      Focus on:
-      1. Security vulnerabilities
-      2. Logical bugs
-      3. Gas optimization
-      4. Sui-specific best practices
-      5. Potential ownership issues
-      6. Type safety issues
+        Focus on:
+        1. Security vulnerabilities
+        2. Logical bugs
+        3. Gas optimization
+        4. Sui-specific best practices
+        5. Potential ownership issues
+        6. Type safety issues
 
-      Provide your analysis.`
+        Provide your analysis.`
     );
 
     const model = new ChatOpenAI({
@@ -429,33 +423,6 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
     const chain = prompt.pipe(model);
     const analysis = await chain.invoke({ code: userMessage });
-
-    // Check if the response includes tool calls
-    if (analysis.tool_calls && analysis.tool_calls.length > 0) {
-      // Create a ToolMessage for each tool_call
-      const toolMessages = await Promise.all(
-        analysis.tool_calls.map(async (toolCall: any) => {
-          // Normally you would execute the tool here, but since code_analysis
-          // is just returning structured data, we can create a dummy response
-          const result = {
-            issues: toolCall.args.issues || [],
-            suggestions: toolCall.args.suggestions || [],
-          };
-
-          // Create a tool message with the result
-          return new ToolMessage({
-            content: JSON.stringify(result),
-            tool_call_id: toolCall.id,
-            name: toolCall.name,
-          });
-        })
-      );
-
-      // Add the tool messages to the conversation
-      return {
-        messages: [analysis, ...toolMessages],
-      };
-    }
 
     return {
       messages: [analysis],
@@ -727,9 +694,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     this._chatHistory = [];
     this.saveChatHistory();
     this.updateChatWebview();
-    vscode.window.showInformationMessage("Chat history cleared", {
-      modal: false,
-    });
+    vscode.window.showInformationMessage("Chat history cleared");
   }
 
   // Clean up resources when the extension is deactivated

@@ -5,3 +5,5 @@ node_modules
 *.vsix
 .env
 package-lock.json
+.vscode/** */
+.vscode/launch.json

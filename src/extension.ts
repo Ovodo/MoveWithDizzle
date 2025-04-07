@@ -1,13 +1,13 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import { MoveStructsView } from "./panels/MoveStructsView.ts";
-import { WelcomeView } from "./panels/WelcomeVIew.ts";
-import { MoveFunctionsView } from "./panels/MoveFunctionsView.ts";
-import { MoveAssistantView } from "./panels/MoveAssistantView.ts";
+import { MoveStructsView } from "./panels/MoveStructsView";
+import { WelcomeView } from "./panels/WelcomeVIew";
+import { MoveFunctionsView } from "./panels/MoveFunctionsView";
+import { MoveAssistantView } from "./panels/MoveAssistantView";
 import { exec } from "child_process";
-import { PackageTreeProvider } from "./panels/PackageTreeProvider.ts";
-import { fetchPackageInfo } from "./utils/fetchPackageInfo.ts";
+import { PackageTreeProvider } from "./panels/PackageTreeProvider";
+import { fetchPackageInfo } from "./utils/fetchPackageInfo";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
