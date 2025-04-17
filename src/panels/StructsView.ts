@@ -1,19 +1,20 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { parseMoveFile } from "../utils/helpers";
 
-interface StructField {
+export interface StructField {
   name: string;
   type: string;
 }
 
-interface MoveStruct {
+export interface MoveStruct {
   name: string;
   abilities: string[];
   fields: StructField[];
 }
 
-export class MoveStructsView implements vscode.WebviewViewProvider {
+export class StructsView implements vscode.WebviewViewProvider {
   public static readonly viewType = "moveAssistant.structs";
   private _view?: vscode.WebviewView;
   private _structs: MoveStruct[] = [];
@@ -27,6 +28,12 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
       console.log("File saved:", document.fileName);
       if (document === vscode.window.activeTextEditor?.document) {
         this.refreshView(); // Refresh when the active file is saved
+      }
+    });
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor && editor.document) {
+        console.log("Switched to file:", editor.document.fileName);
+        this.refreshView(); // Refresh when a different file is focused
       }
     });
   }
@@ -48,17 +55,15 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     };
 
     // Load existing structs from the file
-    this._structs = this.extractStructsFromFile();
 
     // Send extracted structs to the webview
-    this.sendInitialStructs();
+    this.refreshView();
 
     // Set webview HTML with full struct creation interface
     webviewView.webview.html = this.getWebviewContent(
       this._context,
-      webviewView.webview
+      webviewView.webview,
     );
-    this.refreshView();
 
     webviewView.webview.onDidReceiveMessage(
       (message) => {
@@ -78,7 +83,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
               .showWarningMessage(
                 `Are you sure you want to delete struct "${message.structName}"?`,
                 { modal: true },
-                "Delete"
+                "Delete",
               )
               .then((selection) => {
                 if (selection === "Delete") {
@@ -99,7 +104,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
         }
       },
       undefined,
-      this._context.subscriptions
+      this._context.subscriptions,
     );
   }
 
@@ -109,36 +114,38 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
         command: "initialStructs",
         structs: this._structs,
       });
+      this._context.globalState.update("structs", this._structs);
     }
   }
 
   private refreshView() {
-    this._structs = this.extractStructsFromFile();
+    const { structs } = parseMoveFile();
+    this._structs = structs;
     this.sendInitialStructs();
   }
 
   private getWebviewContent(
     context: vscode.ExtensionContext,
-    webview: vscode.Webview
+    webview: vscode.Webview,
   ): string {
     const htmlPath = path.join(
       context.extensionPath,
       "src",
       "media",
-      "structs.html"
+      "structs.html",
     );
     let html = fs.readFileSync(htmlPath, "utf8");
 
     const styleUri = webview.asWebviewUri(
       vscode.Uri.file(
-        path.join(context.extensionPath, "src", "media", "style.css")
-      )
+        path.join(context.extensionPath, "src", "media", "style.css"),
+      ),
     );
 
     // Inject the CSS link before </head>
     html = html.replace(
       "</head>",
-      `<link rel="stylesheet" href="${styleUri}"/></head>`
+      `<link rel="stylesheet" href="${styleUri}"/></head>`,
     );
 
     return html;
@@ -158,7 +165,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
       /(?:public\s+)?struct\s+(\w+)\s*(?:has\s+((?:key|store|copy|drop)(?:\s*,\s*(?:key|store|copy|drop))*))?\s*{[^}]*}/g,
       (match, structName) => {
         return this._structs.some((s) => s.name === structName) ? match : "";
-      }
+      },
     );
 
     // Step 2: Remove extra blank lines caused by deletion
@@ -169,7 +176,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     this._structs.forEach((struct) => {
       const structRegex = new RegExp(
         `(?:public\\s+)?struct\\s+${struct.name}\\s*(?:has\\s+(?:key|store|copy|drop)(?:\\s*,\\s*(?:key|store|copy|drop))*)?\\s*{[^}]*}`,
-        "g"
+        "g",
       );
 
       const abilitiesString =
@@ -186,7 +193,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
             (f) =>
               `  ${f.name}: ${
                 childTypes.includes(f.type) ? f.type.concat("<>") : f.type
-              },`
+              },`,
           )
           .join("\n") +
         `\n}`;
@@ -201,7 +208,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     // Append new structs below the last struct declaration
     if (structDeclarations.length > 0) {
       const lastStructMatch = text.match(
-        /(?:public\s+)?struct\s+\w+\s*(?:has\s+(?:key|store|copy|drop)(?:\s*,\s*(?:key|store|copy|drop))*)?\s*{[^}]*}/g
+        /(?:public\s+)?struct\s+\w+\s*(?:has\s+(?:key|store|copy|drop)(?:\s*,\s*(?:key|store|copy|drop))*)?\s*{[^}]*}/g,
       );
       const lastStructIndex = lastStructMatch
         ? text.lastIndexOf(lastStructMatch[lastStructMatch.length - 1])
@@ -223,7 +230,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     editor.edit((editBuilder) => {
       const all = new vscode.Range(
         document.positionAt(0),
-        document.positionAt(document.getText().length)
+        document.positionAt(document.getText().length),
       );
       editBuilder.replace(all, text);
     });
@@ -233,7 +240,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     console.log(this._structs, "structs");
 
     const existingStructIndex = this._structs.findIndex(
-      (s) => s.name === struct.name
+      (s) => s.name === struct.name,
     );
 
     if (existingStructIndex !== -1) {
@@ -244,7 +251,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
 
     this.updateMoveFile(); // Update file content
     vscode.window.showInformationMessage(
-      `Struct ${struct.name} created successfully!`
+      `Struct ${struct.name} created successfully!`,
     );
     this.updateWebview();
   }
@@ -254,7 +261,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
     console.log("Current structs:", this._structs);
 
     const existingStructIndex = this._structs.findIndex(
-      (s) => s.name === struct.name
+      (s) => s.name === struct.name,
     );
 
     console.log("Existing struct index:", existingStructIndex);
@@ -267,13 +274,13 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
       this.updateMoveFile();
 
       vscode.window.showInformationMessage(
-        `Struct ${struct.name} updated successfully!`
+        `Struct ${struct.name} updated successfully!`,
       );
 
       this.updateWebview();
     } else {
       vscode.window.showWarningMessage(
-        `No struct found with name ${struct.name} to update`
+        `No struct found with name ${struct.name} to update`,
       );
     }
   }
@@ -290,7 +297,7 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
 
   private loadSavedStructs() {
     const savedStructs = this._context.globalState.get<MoveStruct[]>(
-      this._storageKey
+      this._storageKey,
     );
     if (savedStructs) {
       this._structs = savedStructs;
@@ -305,41 +312,6 @@ export class MoveStructsView implements vscode.WebviewViewProvider {
         structs: this._structs,
       });
     }
-  }
-
-  private extractStructsFromFile(): MoveStruct[] {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return [];
-    }
-
-    const text = editor.document.getText();
-    const structRegex =
-      /(?:public\s+)?struct\s+(\w+)\s*(?:has\s+((?:key|store|copy|drop)(?:\s*,\s*(?:key|store|copy|drop))*))?\s*{([^}]*)}/g;
-    let match;
-    const structs: MoveStruct[] = [];
-
-    while ((match = structRegex.exec(text)) !== null) {
-      const name = match[1].trim();
-      const abilities = match[2]
-        ? match[2].split(",").map((a) => a.trim())
-        : [];
-      const fieldsText = match[3].trim();
-
-      const fields: StructField[] = fieldsText
-        .split("\n")
-        .map((line) => line.trim())
-        .filter((line) => line.includes(":"))
-        .map((line) => {
-          const [fieldName, fieldType] = line
-            .split(":")
-            .map((s) => s.trim().replace(",", ""));
-          return { name: fieldName, type: fieldType };
-        });
-
-      structs.push({ name, abilities, fields });
-    }
-    return structs;
   }
 
   // Optional: Method to get all created structs

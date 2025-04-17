@@ -30,6 +30,16 @@
       ],
       "moveAssistant": [
         {
+          "id": "moveAssistant.imports",
+          "name": "Imports",
+          "type": "webview"
+        },
+        {
+          "id": "moveAssistant.constants",
+          "name": "Constants",
+          "type": "webview"
+        },
+        {
           "id": "moveAssistant.structs",
           "name": "Structs",
           "type": "webview"
@@ -38,6 +48,12 @@
           "id": "moveAssistant.functions",
           "name": "Functions",
           "type": "webview"
+        },
+       {
+          "type": "webview",
+          "id": "moveAssistant.testFunctions",
+          "name": "Test Functions",
+          "icon": "$(beaker)"
         },
         {
           "id": "moveAssistant.assistant",
@@ -52,6 +68,10 @@
         "title": "Start a New Contract"
       },
       {
+        "command": "movewithdizzle.formatMoveFile",
+        "title": "Format Move File"
+      },
+      {
         "command": "movewithdizzle.deployContract",
         "title": "Deploy Current Contract"
       }
@@ -59,9 +79,10 @@
   },
   "scripts": {
     "vscode:prepublish": "npm run package",
+    "copy-wasm": "node copy-wasm.js",
     "compile": "npm run check-types && npm run lint && node esbuild.js",
     "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
+    "watch:esbuild": "node esbuild.js --watch && npm run copy-wasm",
     "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
     "package": "npm run check-types && npm run lint && node esbuild.js --production",
     "compile-tests": "tsc -p . --outDir out",
@@ -89,6 +110,7 @@
     "typescript": "^5.7.3"
   },
   "dependencies": {
+    "@langchain/aws": "^0.1.7",
     "@langchain/community": "^0.3.38",
     "@langchain/core": "^0.3.43",
     "@langchain/langgraph": "^0.2.61",
@@ -102,7 +124,10 @@
     "esbuild-postcss": "^0.0.4",
     "langchain": "^0.3.19",
     "mongodb": "^6.15.0",
+    "prettier": "^3.1.1",
+    "prettier-plugin-move": "file:../../sui/external-crates/move/crates/move-analyzer/prettier-plugin",
     "timers-browserify": "^2.0.12",
+    "web-tree-sitter": "^0.25.3",
     "zod": "^3.24.2",
     "zod-to-json-schema": "^3.24.5"
   }

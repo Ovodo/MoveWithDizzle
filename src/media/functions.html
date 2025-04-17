@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Move Functions</title>
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        padding: 10px;
+      }
+      .function-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 5px;
+      }
+      .param-row {
+        display: flex;
+        gap: 10px;
+        width: 100%;
+        margin-bottom: 5px;
+      }
+      .param-name {
+        width: 50%;
+      }
+      .function-list {
+        margin-top: 20px;
+      }
+      button {
+        cursor: pointer;
+        margin-right: 5px;
+      }
+      #functionList details {
+        margin-bottom: 10px;
+      }
+      .function-actions {
+        display: flex;
+        margin-top: 10px;
+      }
+      textarea {
+        width: 100%;
+        min-height: 100px;
+        resize: vertical;
+      }
+      .type-selector {
+        display: flex;
+        gap: 10px;
+      }
+      .code-display {
+        background-color: #140707;
+        padding: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        white-space: pre-wrap;
+        margin-top: 5px;
+      }
+      /* Loading spinner styles */
+      .spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid rgba(0, 0, 0, 0.1);
+        border-radius: 50%;
+        border-top-color: #007bff;
+        animation: spin 1s ease-in-out infinite;
+        margin-left: 10px;
+        vertical-align: middle;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .spinner-container {
+        display: none;
+        align-items: center;
+        margin-top: 10px;
+      }
+      .spinner-text {
+        margin-left: 10px;
+      }
+      /* Disable submit button when loading */
+      button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Move Function Creator</h2>
+    <form id="functionForm" class="function-form">
+      <div>
+        <label for="functionName">Name:</label>
+        <input
+          type="text"
+          id="functionName"
+          placeholder="Function Name"
+          required
+        />
+      </div>
+
+      <input type="hidden" id="originalFunctionName" value="" />
+
+      <div style="display: flex; align-items: center; gap: 8px">
+        <label>Type:</label>
+        <div class="type-selector">
+          <div>
+            <input
+              type="radio"
+              id="public"
+              name="functionType"
+              value="public"
+              checked
+            />
+            <label for="public">public</label>
+          </div>
+          <div>
+            <input
+              type="radio"
+              id="private"
+              name="functionType"
+              value="private"
+            />
+            <label for="private">private</label>
+          </div>
+          <div>
+            <input type="radio" id="entry" name="functionType" value="entry" />
+            <label for="entry">entry</label>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label for="functionDescription">Description:</label>
+        <input
+          type="text"
+          style="width: 100%; height: 50px"
+          id="functionDescription"
+          placeholder="Function description"
+        />
+      </div>
+
+      <div>
+        <label>Parameters:</label>
+        <div id="paramsContainer">
+          <div class="param-row">
+            <input
+              type="text"
+              class="param-name"
+              placeholder="Parameter Name"
+            />
+            <select class="param-type">
+              <!-- Type options will be populated here -->
+            </select>
+            <button type="button" onclick="addParam()">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <label for="returnType">Returns:</label>
+        <select id="returnType">
+          <option value="">void</option>
+          <!-- Other return type options will be populated here -->
+        </select>
+      </div>
+
+      <div>
+        <label for="functionBody">Function Body:</label>
+        <textarea
+          disabled
+          id="functionBody"
+          placeholder="Function body code"
+        ></textarea>
+      </div>
+
+      <button type="submit" id="submitButton">Generate Function</button>
+      <button type="button" id="cancelEditButton" style="display: none">
+        Cancel Edit
+      </button>
+
+      <!-- Loading spinner -->
+      <div id="spinnerContainer" class="spinner-container">
+        <div class="spinner"></div>
+        <span class="spinner-text">Generating function...</span>
+      </div>
+    </form>
+    <div class="function-list" id="functionList">
+      <h3>Saved Functions</h3>
+      <!-- Functions will be dynamically populated here -->
+    </div>
+
+    <script>
+      const vscode = acquireVsCodeApi();
+      const persistedState = vscode.getState() || { functions: [] };
+
+      // Default type options
+      const defaultTypes = [
+        { value: "u8", label: "u8" },
+        { value: "u32", label: "u32" },
+        { value: "u64", label: "u64" },
+        { value: "u128", label: "u128" },
+        { value: "address", label: "address" },
+        { value: "bool", label: "bool" },
+        { value: "Option", label: "Option" },
+        { value: "vector", label: "vector" },
+        { value: "TxContext", label: "TxContext" },
+      ];
+
+      // Populate type options for parameters and return type
+      function populateTypeOptions() {
+        // Try to access structs from persisted state if available
+        let structOptions = [];
+        try {
+          if (vscode.getState() && vscode.getState().structs) {
+            structOptions = vscode.getState().structs.map((s) => ({
+              value: s.name,
+              label: s.name,
+            }));
+          }
+        } catch (e) {
+          console.log("No structs found in state");
+        }
+
+        // Merge all options (avoid duplicates)
+        const allOptions = [...defaultTypes];
+        [...structOptions].forEach((opt) => {
+          if (!allOptions.find((o) => o.value === opt.value)) {
+            allOptions.push(opt);
+          }
+        });
+
+        // Populate param type selects
+        document.querySelectorAll("select.param-type").forEach((select) => {
+          const currentValue = select.value;
+          select.innerHTML = "";
+          allOptions.forEach((opt) => {
+            const optionEl = document.createElement("option");
+            optionEl.value = opt.value;
+            optionEl.textContent = opt.label;
+            if (currentValue === opt.value) {
+              optionEl.selected = true;
+            }
+            select.appendChild(optionEl);
+          });
+        });
+
+        // Populate return type select
+        const returnTypeSelect = document.getElementById("returnType");
+        const currentReturnValue = returnTypeSelect.value;
+        returnTypeSelect.innerHTML = "";
+
+        // Add void option first
+        const voidOption = document.createElement("option");
+        voidOption.value = "";
+        voidOption.textContent = "void";
+        returnTypeSelect.appendChild(voidOption);
+
+        // Add all other type options
+        allOptions.forEach((opt) => {
+          const optionEl = document.createElement("option");
+          optionEl.value = opt.value;
+          optionEl.textContent = opt.label;
+          if (currentReturnValue === opt.value) {
+            optionEl.selected = true;
+          }
+          returnTypeSelect.appendChild(optionEl);
+        });
+      }
+
+      function addParam() {
+        const container = document.getElementById("paramsContainer");
+        const newParamRow = document.createElement("div");
+        newParamRow.className = "param-row";
+        newParamRow.innerHTML = `
+        <input type="text" class="param-name" placeholder="Parameter Name">
+        <select class="param-type">
+          <!-- Options will be populated by populateTypeOptions -->
+        </select>
+        <button type="button" onclick="this.parentElement.remove()">-</button>
+      `;
+        container.appendChild(newParamRow);
+        populateTypeOptions();
+      }
+
+      function resetForm() {
+        document.getElementById("functionName").value = "";
+        document.getElementById("originalFunctionName").value = "";
+        document.getElementById("functionDescription").value = "";
+        document.getElementById("public").checked = true;
+        document.getElementById("returnType").value = "";
+        document.getElementById("functionBody").value = "";
+
+        const paramsContainer = document.getElementById("paramsContainer");
+        paramsContainer.innerHTML = `
+        <div class="param-row">
+          <input type="text" class="param-name" placeholder="Parameter Name">
+          <select class="param-type">
+            <!-- Options will be populated -->
+          </select>
+          <button type="button" onclick="addParam()">+</button>
+        </div>
+      `;
+        // Populate type options in the reset row
+        populateTypeOptions(persistedState.structs || []);
+        document.getElementById("submitButton").textContent =
+          "Generate Function";
+        document.getElementById("submitButton").disabled = false;
+        document.getElementById("cancelEditButton").style.display = "none";
+        document.getElementById("spinnerContainer").style.display = "none";
+      }
+
+      document
+        .getElementById("cancelEditButton")
+        .addEventListener("click", resetForm);
+
+      // Show loading spinner
+      function showLoadingState() {
+        document.getElementById("submitButton").disabled = true;
+        document.getElementById("spinnerContainer").style.display = "flex";
+      }
+
+      // Create new function (default operation)
+      function createFunction() {
+        showLoadingState();
+
+        const functionName = document.getElementById("functionName").value;
+        const functionType = document.querySelector(
+          'input[name="functionType"]:checked'
+        ).value;
+        const description = document.getElementById(
+          "functionDescription"
+        ).value;
+        const returnType = document.getElementById("returnType").value;
+        const body = document.getElementById("functionBody").value;
+
+        const params = Array.from(
+          document.querySelectorAll("#paramsContainer .param-row")
+        )
+          .filter(
+            (row) =>
+              row.querySelector(".param-name").value &&
+              row.querySelector(".param-type")
+          )
+          .map((row) => ({
+            name: row.querySelector(".param-name").value,
+            type: row.querySelector(".param-type").value,
+          }));
+
+        const func = {
+          name: functionName,
+          type: functionType,
+          description,
+          params,
+          returnType,
+          body,
+        };
+
+        vscode.postMessage({
+          command: "createFunction",
+          func: func,
+        });
+
+        // Form will be reset when we receive the response
+      }
+
+      // Update existing function
+      function updateFunction() {
+        showLoadingState();
+
+        const functionName = document.getElementById("functionName").value;
+        const functionType = document.querySelector(
+          'input[name="functionType"]:checked'
+        ).value;
+        const description = document.getElementById(
+          "functionDescription"
+        ).value;
+        const returnType = document.getElementById("returnType").value;
+        const body = document.getElementById("functionBody").value;
+
+        const params = Array.from(
+          document.querySelectorAll("#paramsContainer .param-row")
+        )
+          .filter(
+            (row) =>
+              row.querySelector(".param-name").value &&
+              row.querySelector(".param-type")
+          )
+          .map((row) => ({
+            name: row.querySelector(".param-name").value,
+            type: row.querySelector(".param-type").value,
+          }));
+
+        const func = {
+          name: functionName,
+          type: functionType,
+          description,
+          params,
+          returnType,
+          body,
+        };
+
+        vscode.postMessage({
+          command: "editFunction",
+          func: func,
+        });
+
+        // Form will be reset when we receive the response
+      }
+
+      // Override form submit behavior
+      document
+        .getElementById("functionForm")
+        .addEventListener("submit", function (e) {
+          e.preventDefault();
+          const originalFunctionName = document.getElementById(
+            "originalFunctionName"
+          ).value;
+          if (originalFunctionName) {
+            updateFunction();
+          } else {
+            createFunction();
+          }
+        });
+
+      // Handle incoming messages to update function list
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (
+          message.command === "updateFunctionList" ||
+          message.command === "initialFunctions"
+        ) {
+          updateFunctionList(message.functions, message.structs);
+          populateTypeOptions();
+          // Reset form when functions are updated
+          resetForm();
+        } else if (message.command === "updateStructs") {
+          // If structs are updated, refresh type options
+          populateTypeOptions();
+        }
+      });
+
+      function updateFunctionList(functions, structs) {
+        // Update persisted state
+        persistedState.functions = functions;
+        persistedState.structs = structs;
+        vscode.setState(persistedState);
+
+        const functionList = document.getElementById("functionList");
+        functionList.innerHTML = "<h3>Saved Functions</h3>";
+
+        functions.forEach((func) => {
+          const funcItem = document.createElement("details");
+
+          // Create parameter display string
+          const paramsDisplay = func.params
+            .map((p) => `${p.name}: ${p.type}`)
+            .join(", ");
+
+          // Create return type display
+          const returnDisplay = func.returnType ? `: ${func.returnType}` : "";
+
+          // Create function signature
+          const signature = `${func.type} fun ${func.name}(${paramsDisplay})${returnDisplay}`;
+
+          funcItem.innerHTML = `
+          <summary><strong>${func.name}</strong></summary>
+          <div class="code-display">${signature} {
+    ${func.body}
+}</div>
+          ${
+            func.description
+              ? `<p><em>Description:</em> ${func.description}</p>`
+              : ""
+          }
+          <div class="function-actions">
+            <button onclick="editFunction('${func.name}')">Edit</button>
+            <button class="delete-button" onclick="deleteFunction('${
+              func.name
+            }')">Delete</button>
+          </div>
+        `;
+          functionList.appendChild(funcItem);
+        });
+      }
+
+      function editFunction(functionName) {
+        const func = persistedState.functions.find(
+          (f) => f.name === functionName
+        );
+        if (func) {
+          // Populate form with function details
+          document.getElementById("functionName").value = func.name;
+          document.getElementById("originalFunctionName").value = func.name;
+          document.getElementById("functionDescription").value =
+            func.description || "";
+          document.getElementById("returnType").value = func.returnType || "";
+          document.getElementById("functionBody").value = func.body || "";
+
+          // Set function type
+          document.getElementById(func.type).checked = true;
+
+          // Populate parameters
+          const paramsContainer = document.getElementById("paramsContainer");
+          paramsContainer.innerHTML = ""; // Clear existing params
+
+          if (func.params.length === 0) {
+            // Add an empty parameter row if there are no parameters
+            const emptyParamRow = document.createElement("div");
+            emptyParamRow.className = "param-row";
+            emptyParamRow.innerHTML = `
+            <input type="text" class="param-name" placeholder="Parameter Name">
+            <select class="param-type">
+              <!-- Options will be populated -->
+            </select>
+            <button type="button" onclick="addParam()">+</button>
+          `;
+            paramsContainer.appendChild(emptyParamRow);
+          } else {
+            func.params.forEach((param, index) => {
+              const paramRow = document.createElement("div");
+              paramRow.className = "param-row";
+
+              if (index === func.params.length - 1) {
+                // Last row gets the add button
+                paramRow.innerHTML = `
+                <input type="text" class="param-name" placeholder="Parameter Name" value="${param.name}">
+                <select class="param-type">
+                  <!-- Options will be populated -->
+                </select>
+                <button type="button" onclick="addParam()">+</button>
+              `;
+              } else {
+                // Other rows get the remove button
+                paramRow.innerHTML = `
+                <input type="text" class="param-name" placeholder="Parameter Name" value="${param.name}">
+                <select class="param-type">
+                  <!-- Options will be populated -->
+                </select>
+                <button type="button" onclick="this.parentElement.remove()">-</button>
+              `;
+              }
+
+              paramsContainer.appendChild(paramRow);
+            });
+            populateTypeOptions();
+          }
+
+          // Set the correct type for each parameter
+          document
+            .querySelectorAll("#paramsContainer .param-row")
+            .forEach((row, index) => {
+              if (index < func.params.length) {
+                const select = row.querySelector(".param-type");
+                const paramType = func.params[index].type;
+
+                // Set the selected option
+                Array.from(select.options).forEach((option) => {
+                  if (option.value === paramType) {
+                    option.selected = true;
+                  }
+                });
+              }
+            });
+
+          // Change submit button text and show cancel button
+          document.getElementById("submitButton").textContent =
+            "Update Function";
+          document.getElementById("cancelEditButton").style.display =
+            "inline-block";
+        }
+      }
+
+      function deleteFunction(functionName) {
+        vscode.postMessage({
+          command: "requestDeleteFunction",
+          functionName: functionName,
+        });
+      }
+
+      // Request initial functions when view loads
+      vscode.postMessage({
+        command: "loadInitialFunctions",
+      });
+
+      // Initialize type options on page load
+      populateTypeOptions();
+    </script>
+  </body>
+</html>

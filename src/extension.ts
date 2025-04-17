@@ -1,13 +1,17 @@
 // The module 'vscode' contains the VS Code extensibility API
 // Import the module and reference it with the alias vscode in your code below
 import * as vscode from "vscode";
-import { MoveStructsView } from "./panels/MoveStructsView";
+import { StructsView } from "./panels/StructsView";
 import { WelcomeView } from "./panels/WelcomeVIew";
-import { MoveFunctionsView } from "./panels/MoveFunctionsView";
-import { MoveAssistantView } from "./panels/MoveAssistantView";
+import { FunctionsView } from "./panels/FunctionsView";
+import { AssistantView } from "./panels/AssistantView";
 import { exec } from "child_process";
 import { PackageTreeProvider } from "./panels/PackageTreeProvider";
 import { fetchPackageInfo } from "./utils/fetchPackageInfo";
+import { ConstantsView } from "./panels/ConstView";
+import { ImportsView } from "./panels/ImportsView";
+import { formatMoveFile } from "./utils/helpers";
+import { TestFunctionsView } from "./panels/TestFunctionsView";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -15,7 +19,7 @@ export function activate(context: vscode.ExtensionContext) {
   // Use the console to output diagnostic information (console.log) and errors (console.error)
   // This line of code will only be executed once when your extension is activated
   console.log(
-    'Congratulations, your extension "movewithdizzle" is now active!'
+    'Congratulations, your extension "movewithdizzle" is now active!',
   );
 
   // The command has been defined in the package.json file
@@ -27,9 +31,13 @@ export function activate(context: vscode.ExtensionContext) {
       // The code you place here will be executed every time your command is executed
       // Display a message box to the user
       vscode.window.showInformationMessage("Welcome to MoveWithDizzle!");
-    }
+    },
   );
   context.subscriptions.push(disposable);
+
+  /*==============================================================================================
+  	  Commands
+  	==============================================================================================*/
 
   // Register "Deploy" Command
 
@@ -48,7 +56,7 @@ export function activate(context: vscode.ExtensionContext) {
       }
       // Get the folder containing Move.toml
       const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-        editor.document.uri
+        editor.document.uri,
       );
       if (!workspaceFolder) {
         vscode.window.showErrorMessage("Could not locate workspace folder.");
@@ -93,7 +101,7 @@ export function activate(context: vscode.ExtensionContext) {
 
             // Extract contract address from output
             const packageIdMatch = terminalOutput.match(
-              /PackageID: (0x[0-9a-fA-F]+)/
+              /PackageID: (0x[0-9a-fA-F]+)/,
             );
             if (packageIdMatch && packageIdMatch[1]) {
               const packageId = packageIdMatch[1];
@@ -108,29 +116,29 @@ export function activate(context: vscode.ExtensionContext) {
               const copyAction = "Copy Package ID";
               const result = await vscode.window.showInformationMessage(
                 `Contract deployed successfully! Package ID: ${packageId}`,
-                copyAction
+                copyAction,
               );
 
               // Copy to clipboard if copy action was selected
               if (result === copyAction) {
                 await vscode.env.clipboard.writeText(packageId);
                 vscode.window.showInformationMessage(
-                  "Package ID copied to clipboard!"
+                  "Package ID copied to clipboard!",
                 );
               }
             } else {
               vscode.window.showErrorMessage(
-                "Failed to extract Package ID from deployment output."
+                "Failed to extract Package ID from deployment output.",
               );
             }
           } catch (error: any) {
             vscode.window.showErrorMessage(
-              `Deployment failed: ${error.message || error}`
+              `Deployment failed: ${error.message || error}`,
             );
           }
-        }
+        },
       );
-    }
+    },
   );
 
   context.subscriptions.push(deployCommand);
@@ -141,37 +149,115 @@ export function activate(context: vscode.ExtensionContext) {
       "movewithdizzle.startContract",
       async () => {
         await startNewContract();
-      }
-    )
+      },
+    ),
   );
+
+  const formatMoveFileCommand = vscode.commands.registerCommand(
+    "movewithdizzle.formatMoveFile",
+    async () => {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage("No active editor.");
+        return;
+      }
+
+      const document = editor.document;
+      if (!document.fileName.endsWith(".move")) {
+        vscode.window.showErrorMessage("This is not a Move file.");
+        return;
+      }
+
+      const fileContent = document.getText();
+
+      try {
+        // Find the module declaration with updated regex to handle all styles
+        const moduleDeclarationRegex = /module\s+(?:\w+::)*\w+\s*(?:\{|\s*;)/;
+        const moduleMatch = moduleDeclarationRegex.exec(fileContent);
+
+        if (!moduleMatch) {
+          vscode.window.showErrorMessage("No valid module declaration found.");
+          return;
+        }
+
+        // Get the formatted content
+        const formattedContent = formatMoveFile();
+
+        // Get the content above and including module declaration
+        const contentAboveModule = fileContent.substring(
+          0,
+          moduleMatch.index + moduleMatch[0].length,
+        );
+
+        const edit = new vscode.WorkspaceEdit();
+        const rangeToReplace = new vscode.Range(
+          document.positionAt(moduleMatch.index + moduleMatch[0].length),
+          document.positionAt(fileContent.length),
+        );
+
+        // Replace everything after module declaration with formatted content
+        edit.replace(document.uri, rangeToReplace, formattedContent);
+        await vscode.workspace.applyEdit(edit);
+
+        vscode.window.showInformationMessage("File formatted successfully.");
+      } catch (error: any) {
+        vscode.window.showErrorMessage(
+          `Failed to format file: ${error.message || error}`,
+        );
+      }
+    },
+  );
+
+  context.subscriptions.push(formatMoveFileCommand);
 
   const treeProvider = new PackageTreeProvider(context);
   vscode.window.registerTreeDataProvider("moveContractView", treeProvider);
 
   const welcomeView = vscode.window.registerWebviewViewProvider(
     WelcomeView.viewType,
-    new WelcomeView(context)
+    new WelcomeView(context),
   );
   context.subscriptions.push(welcomeView);
 
   const structView = vscode.window.registerWebviewViewProvider(
-    MoveStructsView.viewType,
-    new MoveStructsView(context)
+    StructsView.viewType,
+    new StructsView(context),
   );
   context.subscriptions.push(structView);
+  const functionsView = new FunctionsView(context);
+  const assistantView = new AssistantView(context);
 
-  const functionsView = vscode.window.registerWebviewViewProvider(
-    MoveFunctionsView.viewType,
-    new MoveFunctionsView(context)
+  functionsView.setAssistantView(assistantView);
+  const functionsContext = vscode.window.registerWebviewViewProvider(
+    FunctionsView.viewType,
+    functionsView,
   );
-  context.subscriptions.push(functionsView);
+  context.subscriptions.push(functionsContext);
 
-  const snippetsView = vscode.window.registerWebviewViewProvider(
-    MoveAssistantView.viewType,
-    new MoveAssistantView(context)
+  const assistantContext = vscode.window.registerWebviewViewProvider(
+    AssistantView.viewType,
+    assistantView,
   );
 
-  context.subscriptions.push(snippetsView);
+  context.subscriptions.push(assistantContext);
+
+  const constantsView = vscode.window.registerWebviewViewProvider(
+    ConstantsView.viewType,
+    new ConstantsView(context),
+  );
+  context.subscriptions.push(constantsView);
+  const testView = vscode.window.registerWebviewViewProvider(
+    TestFunctionsView.viewType,
+    new TestFunctionsView(context),
+  );
+
+  context.subscriptions.push(testView);
+  const importsView = vscode.window.registerWebviewViewProvider(
+    ImportsView.viewType,
+    new ImportsView(context),
+  );
+
+  context.subscriptions.push(importsView);
 
   async function startNewContract() {
     // Prompt user for the contract name
@@ -199,7 +285,7 @@ export function activate(context: vscode.ExtensionContext) {
     await vscode.commands.executeCommand(
       "setContext",
       "moveWithDizzle.started",
-      true
+      true,
     );
   }
 }

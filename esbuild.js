@@ -17,7 +17,7 @@ const esbuildProblemMatcherPlugin = {
       result.errors.forEach(({ text, location }) => {
         console.error(`✘ [ERROR] ${text}`);
         console.error(
-          `    ${location.file}:${location.line}:${location.column}:`
+          `    ${location.file}:${location.line}:${location.column}:`,
         );
       });
       console.log("[watch] build finished");
@@ -36,7 +36,7 @@ async function main() {
     platform: "node",
 
     outfile: "dist/extension.js",
-    external: ["vscode"],
+    external: ["vscode", "web-tree-sitter"],
     logLevel: "silent",
     plugins: [
       /* add to the end of plugins array */

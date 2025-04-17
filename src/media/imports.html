@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Move Imports</title>
+    <link rel="stylesheet" href="./style.css" />
+    <style>
+      body {
+        font-family: sans-serif;
+        padding: 10px;
+      }
+      select,
+      input {
+        margin-bottom: 10px;
+        padding: 5px;
+      }
+      button {
+        margin-left: 5px;
+      }
+      .import-list {
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h3>Import Move Modules</h3>
+
+    <form id="importForm">
+      <select id="importSelect"></select>
+      <label
+        ><input type="checkbox" id="testOnlyCheckbox" /> #[test_only]</label
+      >
+      <button type="submit">Add Import</button>
+    </form>
+
+    <div class="import-list" id="importList">
+      <h4>Saved Imports</h4>
+    </div>
+
+    <div class="import-list" id="testImportList">
+      <h4>Test Imports</h4>
+    </div>
+
+    <script>
+      const vscode = acquireVsCodeApi();
+
+      function populateDropdown(modules) {
+        const select = document.getElementById("importSelect");
+        select.innerHTML = modules
+          .map(
+            (m) => `<option value="${m.label}">${m.icon} ${m.label}</option>`
+          )
+          .join("");
+      }
+
+      document.getElementById("importForm").onsubmit = (e) => {
+        e.preventDefault();
+        const selected = document.getElementById("importSelect").value;
+        const testOnly = document.getElementById("testOnlyCheckbox").checked;
+        const fullImport = `use ${selected};`;
+        const testImport = `#[test_only]\n \tuse ${selected};`;
+        if (testOnly) {
+          vscode.postMessage({
+            command: "addImport",
+            imports: testImport,
+            test: true,
+          });
+        } else {
+          vscode.postMessage({
+            command: "addImport",
+            imports: fullImport,
+            test: false,
+          });
+        }
+      };
+
+      function updateImportList(imports, containerId = "importList") {
+        const container = document.getElementById(containerId);
+        const title =
+          containerId === "testImportList" ? "Test Imports" : "Saved Imports";
+        container.innerHTML = `<h4>${title}</h4>`;
+
+        imports.forEach((imp) => {
+          let cleanedImport = imp.replace(/^#\[test_only\]\s*use\s+/, "📦 ");
+          const normalizedImport = imp.replace(/\s+/g, " ").trim();
+
+          if (cleanedImport === imp) {
+            cleanedImport = imp.replace(/^use\s+/, "📥 ");
+          }
+
+          const div = document.createElement("div");
+          div.innerHTML = `
+            <code>${cleanedImport}</code>
+            <button style="font-size:10px;" title="Delete Import" onclick="deleteImport('${normalizedImport}')">
+              🗑️
+            </button>
+          `;
+          container.appendChild(div);
+        });
+      }
+
+      function deleteImport(imp) {
+        // Normalize the import string by removing extra whitespace, newlines, and tabs
+        // console.log(imp, "imporss");
+        // return;
+        vscode.postMessage({
+          command: "deleteImport",
+          importText: imp,
+          test: imp.includes("#[test_only]") ? true : false,
+        });
+      }
+
+      window.addEventListener("message", (event) => {
+        const msg = event.data;
+        if (msg.command === "updateImportList") {
+          updateImportList(msg.imports, "importList");
+          updateImportList(msg.testImports || [], "testImportList");
+          populateDropdown(msg.dependencyModules);
+        }
+      });
+
+      vscode.postMessage({ command: "loadInitialImports" });
+    </script>
+  </body>
+</html>

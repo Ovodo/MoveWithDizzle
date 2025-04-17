@@ -4,6 +4,9 @@ import * as fs from "fs";
 import * as dotenv from "dotenv";
 
 import { z } from "zod";
+import { MoveFunction } from "./FunctionsView";
+import { MoveStruct } from "./StructsView";
+import { TestFunction } from "./TestFunctionsView";
 
 // Initialize dotenv when the module loads
 dotenv.config();
@@ -22,7 +25,7 @@ const dbName = process.env.MONGODB_DBNAME || "move_book_db";
 const collectionName = process.env.MONGODB_COLLECTION || "vector_documents";
 const indexName = process.env.MONGODB_INDEX_NAME || "vector_index";
 
-export class MoveAssistantView implements vscode.WebviewViewProvider {
+export class AssistantView implements vscode.WebviewViewProvider {
   public static readonly viewType = "moveAssistant.assistant";
   private _view?: vscode.WebviewView;
   private _chatHistory: ChatMessage[] = [];
@@ -42,7 +45,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     this.initializeRAG().catch((error) => {
       console.error("Failed to initialize RAG:", error);
       vscode.window.showErrorMessage(
-        "Failed to initialize Sui Move Assistant. Check your MongoDB connection."
+        "Failed to initialize Sui Move Assistant. Check your MongoDB connection.",
       );
     });
 
@@ -59,13 +62,18 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     const { vectorStore, client } = await this.setupMongoVectorStore();
     this._vectorStore = vectorStore;
     this._mongoClient = client;
-
     // Initialize the workflow
     this._agenticWorkflow = await this.createAgenticWorkflow(vectorStore);
-
-    vscode.window.showInformationMessage(
-      "Sui Move Assistant initialized successfully"
+    const statusBarItem = vscode.window.createStatusBarItem(
+      vscode.StatusBarAlignment.Left,
+      100,
     );
+    statusBarItem.text = "$(rocket) Sui Move Assistant initialized";
+    statusBarItem.show();
+    setTimeout(() => {
+      statusBarItem.hide();
+      statusBarItem.dispose();
+    }, 3000); // Auto-hide after 3 seconds
   }
 
   private async setupMongoVectorStore() {
@@ -89,7 +97,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
           indexName,
           textKey: "text",
           embeddingKey: "embedding",
-        }
+        },
       );
 
       console.log("MongoDB Vector Store initialized successfully");
@@ -137,7 +145,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     workflow.addEdge(START, "analyzeMoveCode");
     workflow.addEdge("analyzeMoveCode", "agent");
     workflow.addConditionalEdges("agent", (state: any) =>
-      this.shouldRetrieve(state)
+      this.shouldRetrieve(state),
     );
     workflow.addEdge("retrieve", "gradeDocuments");
     workflow.addConditionalEdges(
@@ -146,7 +154,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
       {
         yes: "generate",
         no: "generate",
-      }
+      },
     );
     workflow.addEdge("generate", END);
 
@@ -165,7 +173,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     // Set webview HTML with chat interface
     webviewView.webview.html = this.getWebviewContent(
       this._context,
-      webviewView.webview
+      webviewView.webview,
     );
 
     // Send chat history to webview
@@ -191,7 +199,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
         }
       },
       undefined,
-      this._context.subscriptions
+      this._context.subscriptions,
     );
   }
 
@@ -229,7 +237,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
       console.error("Error processing message:", error);
       this.addMessage(
         "assistant",
-        "Sorry, I encountered an error processing your request. Please check if the MongoDB connection is properly configured."
+        "Sorry, I encountered an error processing your request. Please check if the MongoDB connection is properly configured.",
       );
     } finally {
       this._isProcessing = false;
@@ -239,7 +247,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
   private async processWithAgenticRAG(
     userQuery: string,
-    fileContent?: string | null
+    fileContent?: string | null,
   ): Promise<string> {
     if (!this._agenticWorkflow) {
       throw new Error("Agentic workflow not initialized");
@@ -265,7 +273,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
           // @ts-ignore - access messages property of the output
           const lastMsg = output[key].messages[output[key].messages.length - 1];
           console.log(
-            `Output from node: '${key}'\n ${JSON.stringify(value, null, 2)}`
+            `Output from node: '${key}'\n ${JSON.stringify(value, null, 2)}`,
           );
 
           if (
@@ -329,7 +337,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
       If the content of the docs are relevant to the user's question about Sui Move development, score them as relevant.
       Give a binary score 'yes' or 'no' score to indicate whether the docs are relevant to the question.
       Yes: The docs are relevant to the question.
-      No: The docs are not relevant to the question.`
+      No: The docs are not relevant to the question.`,
     );
 
     const model = new ChatOpenAI({
@@ -357,7 +365,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
     const lastMessage = messages[messages.length - 1];
     if (!("tool_calls" in lastMessage)) {
       throw new Error(
-        "The 'checkRelevance' node requires the most recent message to contain tool calls."
+        "The 'checkRelevance' node requires the most recent message to contain tool calls.",
       );
     }
     const toolCalls = lastMessage?.tool_calls;
@@ -417,7 +425,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
       5. Potential ownership issues
       6. Type safety issues
 
-      Provide your analysis.`
+      Provide your analysis.`,
     );
 
     const model = new ChatOpenAI({
@@ -448,7 +456,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
             tool_call_id: toolCall.id,
             name: toolCall.name,
           });
-        })
+        }),
       );
 
       // Add the tool messages to the conversation
@@ -563,7 +571,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
         4. Follows best practices for gas optimization
         5. Is secure by design
 
-        If the documentation isn't sufficient to answer the question completely, be honest about limitations while providing the best possible guidance based on general Sui Move principles.`
+        If the documentation isn't sufficient to answer the question completely, be honest about limitations while providing the best possible guidance based on general Sui Move principles.`,
     );
 
     const llm = new ChatOpenAI({
@@ -646,13 +654,13 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
   private getWebviewContent(
     context: vscode.ExtensionContext,
-    webview: vscode.Webview
+    webview: vscode.Webview,
   ): string {
     const htmlPath = path.join(
       context.extensionPath,
       "src",
       "media",
-      "assistant.html"
+      "assistant.html",
     );
 
     // Create a basic chat interface if file doesn't exist
@@ -660,19 +668,19 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
     const styleUri = webview.asWebviewUri(
       vscode.Uri.file(
-        path.join(context.extensionPath, "src", "media", "style.css")
-      )
+        path.join(context.extensionPath, "src", "media", "style.css"),
+      ),
     );
 
     // Inject the CSS link before </head> if it exists
     if (
       fs.existsSync(
-        path.join(context.extensionPath, "src", "media", "style.css")
+        path.join(context.extensionPath, "src", "media", "style.css"),
       )
     ) {
       html = html.replace(
         "</head>",
-        `<link rel="stylesheet" href="${styleUri}"/></head>`
+        `<link rel="stylesheet" href="${styleUri}"/></head>`,
       );
     }
 
@@ -686,6 +694,167 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
         messages: this._chatHistory,
       });
     }
+  }
+
+  // --- New Methods for Completing Function Bodies ---
+
+  /**
+   * Completes the function body of a given MoveFunction object using the agentic RAG.
+   * @param moveFunction The MoveFunction object with properties describing the function.
+   * @returns The updated MoveFunction object with a generated function body.
+   */
+  public async completeFunctionBody(
+    moveFunction: MoveFunction,
+    structs: MoveStruct[],
+  ): Promise<String> {
+    const { ChatPromptTemplate } = await import("@langchain/core/prompts");
+    const { ChatOpenAI } = await import("@langchain/openai");
+    const { ChatBedrockConverse } = await import("@langchain/aws");
+
+    const prompt = ChatPromptTemplate.fromTemplate(
+      `
+        {structs}
+        You are an expert Sui Move developer. Using the above information, Complete the function body for the following Move function:
+
+        Function Name: {name}
+        Function Type: {type}
+        Description: {description}
+        Parameters: {params}
+        Return Type: {returns}
+
+        Make sure verify certain variables and conditions before processing in the function to enhance security.
+        `,
+    );
+
+    const model = new ChatOpenAI({
+      model: "o3-mini",
+      // temperature: 0,
+    });
+
+    const chain = prompt.pipe(model);
+    let body =
+      "let payment = Payment { id:object::new(ctx),balance: 50};\n  transfer::public_transfer(payment, tx_context::sender(ctx))";
+
+    const response = await chain.invoke({
+      name: moveFunction.name,
+      type: moveFunction.type,
+      description: moveFunction.description,
+      params: JSON.stringify(moveFunction.params, null, 2),
+      returns: moveFunction.returns,
+      structs: JSON.stringify(structs, null, 2),
+      body: body,
+    });
+
+    // Assume response.content holds the generated function body
+    // moveFunction.body = response.content.toString();
+    console.log(JSON.stringify(response, null, 2));
+    return response.content.toString();
+  }
+
+  // Add this new method to the MoveAssistantView class
+  async completeTestFunctionBody(
+    func: TestFunction,
+    structs: MoveStruct[],
+  ): Promise<string | undefined> {
+    try {
+      const editor = vscode.window.activeTextEditor;
+      if (!editor) {
+        vscode.window.showErrorMessage("No active editor found");
+        return;
+      }
+
+      const document = editor.document;
+      const text = document.getText();
+
+      // Get module and function information
+      // const moduleName = this.extractModuleName(text);
+      const moduleName = "payments";
+
+      // Create a prompt for the AI to generate a test function body
+      const prompt = this.createTestFunctionPrompt(
+        func,
+        structs,
+        moduleName,
+        text,
+      );
+
+      // Call OpenAI API to get the test function body
+      // const response = await this.callOpenAI(prompt);
+      const response = "";
+
+      if (response) {
+        return response;
+      } else {
+        vscode.window.showErrorMessage("Failed to generate test function");
+        return undefined;
+      }
+    } catch (error) {
+      console.error("Error generating test function body:", error);
+      vscode.window.showErrorMessage(
+        `Error generating test function: ${error}`,
+      );
+      return undefined;
+    }
+  }
+
+  // Add this helper method for creating test function prompts
+  private createTestFunctionPrompt(
+    func: TestFunction,
+    structs: MoveStruct[],
+    moduleName: string,
+    sourceCode: string,
+  ): string {
+    // Format parameters for the prompt
+    const formattedParams = func.params
+      .map((p) => `${p.name}: ${p.type}`)
+      .join(", ");
+
+    // Get struct definitions for context
+    const structsContext = structs
+      .map(
+        (s) =>
+          `struct ${s.name} { ${s.fields
+            .map((f) => `${f.name}: ${f.type}`)
+            .join(", ")} }`,
+      )
+      .join("\n");
+
+    // Create a prompt for generating a test function
+    return `
+You are an AI assistant specializing in Move language for Sui blockchain. 
+I need you to generate a test function body for the following Move test function.
+
+Module name: ${moduleName}
+
+Current module code:
+\`\`\`
+${sourceCode}
+\`\`\`
+
+Struct definitions:
+\`\`\`
+${structsContext}
+\`\`\`
+
+Test function signature:
+\`\`\`
+#[test]
+fun ${func.name}(${formattedParams}) {
+  // TODO: Implement test
+}
+\`\`\`
+
+Test function description: ${func.description || "No description provided"}
+
+Please write a comprehensive test function body for this signature. Focus on:
+1. Testing the module's functionality with various scenarios
+2. Proper usage of test_scenario for Move testing
+3. Include assertions to validate expected behavior
+4. Follow Move testing best practices
+5. Only return the complete test function with body, no explanations
+
+Return the complete function with the body filled in.
+`;
   }
 
   private updateWebviewProcessingState(isProcessing: boolean) {
@@ -716,7 +885,7 @@ export class MoveAssistantView implements vscode.WebviewViewProvider {
 
   private loadSavedHistory() {
     const savedHistory = this._context.globalState.get<ChatMessage[]>(
-      this._storageKey
+      this._storageKey,
     );
     if (savedHistory) {
       this._chatHistory = savedHistory;

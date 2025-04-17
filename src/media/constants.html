@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Move Constants</title>
+    <link rel="stylesheet" type="text/css" href="./style.css" />
+    <style>
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+        padding: 10px;
+      }
+      .constant-form {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-bottom: 20px;
+        border: 1px solid #ddd;
+        padding: 15px;
+        border-radius: 5px;
+      }
+      .constant-list {
+        margin-top: 20px;
+      }
+      button {
+        cursor: pointer;
+        margin-right: 5px;
+      }
+      #constantList details {
+        margin-bottom: 10px;
+      }
+      .constant-actions {
+        display: flex;
+        margin-top: 10px;
+      }
+
+      /* .value-input {
+        width: 100%;
+      } */
+    </style>
+  </head>
+  <body>
+    <h2 class="text-sm text-blue-700">Move Constant Creator</h2>
+    <form id="constantForm" class="constant-form">
+      <input
+        type="text"
+        id="constantName"
+        placeholder="Constant Name"
+        required
+      />
+      <input type="hidden" id="originalConstantName" value="" />
+
+      <select id="constantType">
+        <option value="u8">u8</option>
+        <option value="u32">u32</option>
+        <option value="u64">u64</option>
+        <option value="u128">u128</option>
+      </select>
+
+      <input
+        type="text"
+        id="constantValue"
+        class="value-input"
+        placeholder="Value"
+        required
+      />
+
+      <button type="submit" id="submitButton">Create Constant</button>
+      <button type="button" id="cancelEditButton" style="display: none">
+        Cancel Edit
+      </button>
+    </form>
+    <div class="constant-list text-green-500" id="constantList">
+      <h3>Saved Constants</h3>
+      <!-- Constants will be dynamically populated here -->
+    </div>
+
+    <script>
+      const vscode = acquireVsCodeApi();
+      const persistedState = vscode.getState() || { constants: [] };
+
+      function resetForm() {
+        document.getElementById("constantName").value = "";
+        document.getElementById("originalConstantName").value = "";
+        document.getElementById("constantType").value = "u8";
+        document.getElementById("constantValue").value = "";
+        document.getElementById("submitButton").textContent = "Create Constant";
+        document.getElementById("cancelEditButton").style.display = "none";
+      }
+
+      document
+        .getElementById("cancelEditButton")
+        .addEventListener("click", resetForm);
+
+      // Create new constant
+      function createConstant() {
+        const constantName = document.getElementById("constantName").value;
+        const type = document.getElementById("constantType").value;
+        const value = document.getElementById("constantValue").value;
+
+        const constant = {
+          name: constantName,
+          type,
+          value,
+        };
+
+        vscode.postMessage({
+          command: "createConstant",
+          constant: constant,
+        });
+
+        resetForm();
+      }
+
+      // Update existing constant
+      function updateConstant() {
+        const constantName = document.getElementById("constantName").value;
+        const originalConstantName = document.getElementById(
+          "originalConstantName"
+        ).value;
+        const type = document.getElementById("constantType").value;
+        const value = document.getElementById("constantValue").value;
+
+        const constant = {
+          name: constantName,
+          type,
+          value,
+        };
+
+        vscode.postMessage({
+          command: "editConstant",
+          constant: constant,
+          name: originalConstantName,
+        });
+
+        resetForm();
+      }
+
+      // Override form submit behavior
+      document.getElementById("constantForm").onsubmit = function (e) {
+        e.preventDefault();
+        const originalConstantName = document.getElementById(
+          "originalConstantName"
+        ).value;
+        if (originalConstantName) {
+          updateConstant();
+        } else {
+          createConstant();
+        }
+      };
+
+      // Handle incoming messages
+      window.addEventListener("message", (event) => {
+        const message = event.data;
+        if (
+          message.command === "updateConstantList" ||
+          message.command === "initialConstants"
+        ) {
+          updateConstantList(message.constants);
+        }
+      });
+
+      function updateConstantList(constants) {
+        // Update persisted state
+        persistedState.constants = constants;
+        const constantList = document.getElementById("constantList");
+        constantList.innerHTML = "<h3>Saved Constants</h3>";
+
+        constants.forEach((constant) => {
+          const constantItem = document.createElement("details");
+          constantItem.innerHTML = `
+            <summary><strong>${constant.name}</strong>: ${constant.type}</summary>
+            <p>Value: ${constant.value}</p>
+            <div class="constant-actions">
+              <button onclick="editConstant('${constant.name}')">Edit</button>
+              <button class="delete-button" onclick="deleteConstant('${constant.name}')">Delete</button>
+            </div>
+          `;
+          constantList.appendChild(constantItem);
+        });
+
+        vscode.setState({ constants });
+      }
+
+      function editConstant(constantName) {
+        const constant = vscode
+          .getState()
+          .constants.find((c) => c.name === constantName);
+
+        if (constant) {
+          console.log(constant, "constant");
+          document.getElementById("constantName").value = constant.name;
+          document.getElementById("originalConstantName").value = constant.name;
+
+          // Set type and value
+          document.getElementById("constantType").value = constant.type;
+          document.getElementById("constantValue").value = constant.value;
+
+          // Change button text and show cancel button
+          document.getElementById("submitButton").textContent =
+            "Update Constant";
+          document.getElementById("cancelEditButton").style.display =
+            "inline-block";
+        }
+      }
+
+      function deleteConstant(constantName) {
+        vscode.postMessage({
+          command: "requestDeleteConstant",
+          constantName: constantName,
+        });
+      }
+
+      // Request initial constants when view loads
+      vscode.postMessage({
+        command: "loadInitialConstants",
+      });
+    </script>
+  </body>
+</html>
