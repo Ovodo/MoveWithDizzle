@@ -1,137 +1,137 @@
 import * as vscode from "vscode";
-import { FunctionParam, MoveFunction } from "../panels/FunctionsView";
-import { MoveStruct, StructField } from "../panels/StructsView";
+import { FunctionParam, MoveFunction, MoveStruct, StructField } from "../types";
+import { parseMoveFile as parseMove } from "./help";
 
-export function extractFunctionsFromFile(data?: string): MoveFunction[] {
-  const editor = vscode.window.activeTextEditor;
-  if (!editor) {
-    return [];
-  }
+// export function extractFunctionsFromFile(data?: string): MoveFunction[] {
+//   const editor = vscode.window.activeTextEditor;
+//   if (!editor) {
+//     return [];
+//   }
 
-  const text = data ? data : editor.document.getText();
+//   const text = data ? data : editor.document.getText();
 
-  // First, split the text by functions to better handle nested braces
-  const functionBlocks = splitFunctionBlocks(text);
-  const functions: MoveFunction[] = [];
+//   // First, split the text by functions to better handle nested braces
+//   const functionBlocks = splitFunctionBlocks(text);
+//   const functions: MoveFunction[] = [];
 
-  for (const block of functionBlocks) {
-    // Skip test functions
-    if (block.includes("#[test]")) {
-      continue;
-    }
+//   for (const block of functionBlocks) {
+//     // Skip test functions
+//     if (block.includes("#[test]")) {
+//       continue;
+//     }
 
-    // Extract the function signature and details first
-    const signatureMatch = block.match(
-      /(?:public\(package\)|public|entry|private)?\s*fun\s+(\w+)\s*\(([^)]*)\)(?:\s*:\s*([^{]+))?/,
-    );
+//     // Extract the function signature and details first
+//     const signatureMatch = block.match(
+//       /(?:public\(package\)|public|entry|private)?\s*fun\s+(\w+)\s*\(([^)]*)\)(?:\s*:\s*([^{]+))?/,
+//     );
 
-    if (!signatureMatch) {
-      continue; // Not a valid function, skip
-    }
+//     if (!signatureMatch) {
+//       continue; // Not a valid function, skip
+//     }
 
-    const fullSignature = signatureMatch[0];
-    const name = signatureMatch[1];
-    const paramsText = signatureMatch[2].trim();
-    const returns = signatureMatch[3] ? signatureMatch[3].trim() : "";
+//     const fullSignature = signatureMatch[0];
+//     const name = signatureMatch[1];
+//     const paramsText = signatureMatch[2].trim();
+//     const returns = signatureMatch[3] ? signatureMatch[3].trim() : "";
 
-    // Determine function type with support for public(package)
-    let type = "private"; // Default is private
-    if (fullSignature.includes("public(package)")) {
-      type = "public(package)";
-    } else if (fullSignature.includes("public")) {
-      type = "public";
-    } else if (fullSignature.includes("entry")) {
-      type = "entry";
-    }
+//     // Determine function type with support for public(package)
+//     let type = "private"; // Default is private
+//     if (fullSignature.includes("public(package)")) {
+//       type = "public(package)";
+//     } else if (fullSignature.includes("public")) {
+//       type = "public";
+//     } else if (fullSignature.includes("entry")) {
+//       type = "entry";
+//     }
 
-    // Extract the comment block that appears right before the function signature
-    const commentRegex =
-      /\/\*\s*([\s\S]*?)\s*\*\/\s*(?:public\(package\)|public|entry|private)?\s*fun\s+\w+/;
-    const commentMatch = block.match(commentRegex);
+//     // Extract the comment block that appears right before the function signature
+//     const commentRegex =
+//       /\/\*\s*([\s\S]*?)\s*\*\/\s*(?:public\(package\)|public|entry|private)?\s*fun\s+\w+/;
+//     const commentMatch = block.match(commentRegex);
 
-    let description = "";
-    let paramDocMap = new Map();
-    let returnDoc = "";
+//     let description = "";
+//     let paramDocMap = new Map();
+//     let returnDoc = "";
 
-    if (commentMatch) {
-      const commentContent = commentMatch[1];
-      const commentLines = commentContent.split("\n");
+//     if (commentMatch) {
+//       const commentContent = commentMatch[1];
+//       const commentLines = commentContent.split("\n");
 
-      // The first non-empty line is the main description
-      for (const line of commentLines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine && !trimmedLine.startsWith("@")) {
-          description = trimmedLine;
-          break;
-        }
-      }
+//       // The first non-empty line is the main description
+//       for (const line of commentLines) {
+//         const trimmedLine = line.trim();
+//         if (trimmedLine && !trimmedLine.startsWith("@")) {
+//           description = trimmedLine;
+//           break;
+//         }
+//       }
 
-      // Extract @param documentation
-      const paramRegex = /@param\s+(\w+)(?:\s*-\s*(.+))?/g;
-      let paramMatch;
-      while ((paramMatch = paramRegex.exec(commentContent)) !== null) {
-        const paramName = paramMatch[1];
-        const paramDesc = paramMatch[2] ? paramMatch[2].trim() : "";
-        paramDocMap.set(paramName, paramDesc);
-      }
+//       // Extract @param documentation
+//       const paramRegex = /@param\s+(\w+)(?:\s*-\s*(.+))?/g;
+//       let paramMatch;
+//       while ((paramMatch = paramRegex.exec(commentContent)) !== null) {
+//         const paramName = paramMatch[1];
+//         const paramDesc = paramMatch[2] ? paramMatch[2].trim() : "";
+//         paramDocMap.set(paramName, paramDesc);
+//       }
 
-      // Extract @return documentation
-      const returnMatch = commentContent.match(/@return\s*-\s*(.+)/);
-      if (returnMatch) {
-        returnDoc = returnMatch[1].trim();
-      }
-    }
+//       // Extract @return documentation
+//       const returnMatch = commentContent.match(/@return\s*-\s*(.+)/);
+//       if (returnMatch) {
+//         returnDoc = returnMatch[1].trim();
+//       }
+//     }
 
-    // Extract function body
-    const bodyStartIndex = block.indexOf("{") + 1;
-    let bodyEndIndex = block.lastIndexOf("}");
+//     // Extract function body
+//     const bodyStartIndex = block.indexOf("{") + 1;
+//     let bodyEndIndex = block.lastIndexOf("}");
 
-    // Handle nested braces in function body
-    let openBraces = 1;
-    let i = bodyStartIndex;
-    while (i < block.length && openBraces > 0) {
-      if (block[i] === "{") {
-        openBraces++;
-      } else if (block[i] === "}") {
-        openBraces--;
-      }
-      i++;
-    }
-    if (openBraces === 0) {
-      bodyEndIndex = i - 1;
-    }
+//     // Handle nested braces in function body
+//     let openBraces = 1;
+//     let i = bodyStartIndex;
+//     while (i < block.length && openBraces > 0) {
+//       if (block[i] === "{") {
+//         openBraces++;
+//       } else if (block[i] === "}") {
+//         openBraces--;
+//       }
+//       i++;
+//     }
+//     if (openBraces === 0) {
+//       bodyEndIndex = i - 1;
+//     }
 
-    const body = block.substring(bodyStartIndex, bodyEndIndex).trim();
+//     const body = block.substring(bodyStartIndex, bodyEndIndex).trim();
 
-    // Parse parameters from function signature
-    const params: FunctionParam[] =
-      paramsText !== ""
-        ? paramsText.split(",").map((param) => {
-            const parts = param.split(":").map((s) => s.trim());
-            const paramName = parts[0];
-            const paramType = parts.length > 1 ? parts[1] : "";
-            const paramDesc = paramDocMap.get(paramName) || "";
+//     // Parse parameters from function signature
+//     const params: FunctionParam[] =
+//       paramsText !== ""
+//         ? paramsText.split(",").map((param) => {
+//             const parts = param.split(":").map((s) => s.trim());
+//             const paramName = parts[0];
+//             const paramType = parts.length > 1 ? parts[1] : "";
+//             const paramDesc = paramDocMap.get(paramName) || "";
 
-            return {
-              name: paramName,
-              type: paramType,
-              description: paramDesc,
-            };
-          })
-        : [];
+//             return {
+//               name: paramName,
+//               type: paramType,
+//               description: paramDesc,
+//             };
+//           })
+//         : [];
 
-    functions.push({
-      name,
-      type,
-      description,
-      params,
-      returns,
-      body,
-    });
-  }
+//     functions.push({
+//       name,
+//       type,
+//       description,
+//       params,
+//       returns,
+//       body,
+//     });
+//   }
 
-  return functions;
-}
+//   return functions;
+// }
 
 /**
  * Split the file content into function blocks, properly handling nested braces
@@ -557,16 +557,19 @@ export function normalizeAlias(modulePath: string): string {
     .replace(/^MoveStdlib::/i, "std::");
 }
 
-export function formatMoveFile(): string {
+export async function formatMoveFile(
+  context: vscode.ExtensionContext,
+  data?: string,
+): Promise<string> {
   // Extract imports, constants, structs, and functions using parseMoveFile
   const { imports, testImports, constants, structs, functions, testFunctions } =
-    parseMoveFile();
+    await parseMove(context, data);
 
   // Format imports
   const formattedImports = `/*==============================================================================================
   Dependencies - DO NOT MODIFY
-==============================================================================================*/
-${[...imports].join("\n")}`;
+  ==============================================================================================*/
+${[...imports].map((imp) => `${imp}`).join("\n")}`;
 
   // Format constants
   const generalConstants = constants.filter((c) => !c.name.startsWith("E"));
@@ -574,56 +577,59 @@ ${[...imports].join("\n")}`;
 
   const formattedConstants = `/*==============================================================================================
   Constants - Add your constants here (if any)
-==============================================================================================*/
+  ==============================================================================================*/
 ${generalConstants
   .map((c) => `const ${c.name}: ${c.type} = ${c.value};`)
   .join("\n")}
 
   /*==============================================================================================
   Error codes - DO NOT MODIFY
-==============================================================================================*/
+  ==============================================================================================*/
 ${errorConstants
   .map(
     (c) => `/// ${c.name}
-const ${c.name}: ${c.type} = ${c.value};`,
+\tconst ${c.name}: ${c.type} = ${c.value};`,
   )
   .join("\n")}`;
 
   // Format structs
   const formattedStructs = `/*==============================================================================================
   Module Structs - DO NOT MODIFY
-==============================================================================================*/
+  ==============================================================================================*/
 ${structs
   .map((s) => {
     const fields = s.fields.map((f) => `\t${f.name}: ${f.type},`).join("\n");
-    return `struct ${s.name} has ${s.abilities.join(", ")} {\n${fields}\n}`;
+    return `public struct ${s.name} has ${s.abilities.join(
+      ", ",
+    )} {\n${fields}\n}`;
   })
   .join("\n\n")}`;
 
   // Format functions
   const formattedFunctions = `/*==============================================================================================
   Functions
-==============================================================================================*/
+  ==============================================================================================*/
 ${functions
   .map((f) => {
     const params = f.params.map((p) => `${p.name}: ${p.type}`).join(", ");
     const visibility = f.type === "private" ? "" : f.type ? `${f.type} ` : "";
-    return `${visibility} fun ${f.name}(${params}): ${f.returns} {\n\t${f.body}\n}`;
+    return `${visibility} fun ${f.name}(${params})${f.returns && ":"} ${
+      f.returns
+    } {\n\t${f.body}\n}`;
   })
   .join("\n\n")}`;
 
   // Format functions
   const formattedTestFunctions = `/*==============================================================================================
   Tests
-==============================================================================================*/
-
-${[...testImports].join("\n\n")}
+  ==============================================================================================*/
+${[...testImports].map((imp) => `${imp}`).join("\n")}
 ${testFunctions
   .map((f) => {
     const params = f.params.map((p) => `${p.name}: ${p.type}`).join(", ");
     return `fun ${f.name}(${params}): ${f.returns} {\n\t${f.body}\n}`;
   })
-  .join("\n\n")}`;
+  .join("\n\n")}}`;
 
   // Combine all sections
   return [
@@ -631,5 +637,6 @@ ${testFunctions
     formattedConstants,
     formattedStructs,
     formattedFunctions,
+    formattedTestFunctions,
   ].join("\n\n");
 }

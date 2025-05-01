@@ -191,12 +191,12 @@ export class StructsView implements vscode.WebviewViewProvider {
         struct.fields
           .map(
             (f) =>
-              `  ${f.name}: ${
+              `  \t\t${f.name}: ${
                 childTypes.includes(f.type) ? f.type.concat("<>") : f.type
               },`,
           )
           .join("\n") +
-        `\n}`;
+        `\n\t}\n`;
 
       if (text.match(structRegex)) {
         text = text.replace(structRegex, newStructText);

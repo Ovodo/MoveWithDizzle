@@ -1,30 +1,20 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { parseMoveFile } from "../utils/help";
-import { MoveStruct } from "./StructsView";
+import { parseMoveFile, updateMoveFileGeneral } from "../utils/help";
+import { parseMoveFile as parseResponse } from "../utils/helpers";
+import { MoveStruct, MoveFunction, MoveConstant } from "../types";
 import { AssistantView } from "./AssistantView";
-
-export interface FunctionParam {
-  name: string;
-  type: string;
-  description: string;
-}
-
-export interface MoveFunction {
-  name: string;
-  type: string; // public, private, or entry
-  description: string;
-  params: FunctionParam[];
-  returns: string;
-  body: string;
-}
 
 export class FunctionsView implements vscode.WebviewViewProvider {
   public static readonly viewType = "moveAssistant.functions";
   private _view?: vscode.WebviewView;
   private _functions: MoveFunction[] = [];
   private _structs: MoveStruct[] = [];
+  private _testImports: string[] = [];
+  private _imports: string[] = [];
+  private _constants: MoveConstant[] = [];
+  private _testFunctions: MoveFunction[] = [];
   private _storageKey = "moveAssistant.savedFunctions";
   private _assistantView?: AssistantView;
 
@@ -138,13 +128,18 @@ export class FunctionsView implements vscode.WebviewViewProvider {
     } = await parseMoveFile(this._context);
     this._functions = functions;
     this._structs = structs;
+    this._testFunctions = testFunctions;
+    this._functions = functions;
+    this._constants = constants;
+    this._testImports = testImports;
+    this._imports = imports;
     // console.log(this._f[0], "first");
-    console.log(await parseMoveFile(this._context), "functions");
+    // console.log(await parseMoveFile(this._context), "functions");
     this._context.workspaceState.update("imports", imports);
     this._context.workspaceState.update("testImports", testImports);
     this._context.workspaceState.update("constants", constants);
     this._context.workspaceState.update("structs", structs);
-    this._context.workspaceState.update("funsctions", functions);
+    this._context.workspaceState.update("functions", functions);
     this._context.workspaceState.update("testFunctions", testFunctions);
 
     this.sendInitialFunctions();
@@ -177,101 +172,52 @@ export class FunctionsView implements vscode.WebviewViewProvider {
     return html;
   }
 
-  private updateMoveFile() {
-    const editor = vscode.window.activeTextEditor;
-    if (!editor) {
-      return;
+  private async updateMoveFile(): Promise<void> {
+    await updateMoveFileGeneral(this._context, {
+      functions: this._functions as MoveFunction[],
+      structs: this._structs as MoveStruct[],
+      constants: this._constants,
+      imports: this._imports,
+      testImports: this._testImports,
+      testFunctions: this._testFunctions as MoveFunction[],
+    });
+    if (this.refreshView) {
+      this.refreshView();
     }
-
-    const document = editor.document;
-    let text = document.getText();
-
-    // Better pattern to match Move functions, including proper nested brace handling
-    const visibilityPattern = `(?:public\\(package\\)|public|private|entry)?`;
-    const funcPattern = new RegExp(
-      `(?:\\/\\*[\\s\\S]*?\\*\\/|(?:\\/\\/\\s*@description.*\\n))?\\s*${visibilityPattern}\\s*fun\\s+(\\w+)\\s*\\([^)]*\\)(?:\\s*:\\s*[^{]+)?\\s*\\{([\\s\\S]*?)\\}`,
-      "g",
-    );
-
-    // Step 1: First identify all functions in the text
-    const existingFunctions = new Map();
-    let match;
-    while ((match = funcPattern.exec(text)) !== null) {
-      const [fullMatch, funcName] = match;
-      existingFunctions.set(funcName, fullMatch);
-    }
-
-    // Step 2: Build new text content from scratch
-    let newText = text.split(funcPattern)[0].trim(); // Keep header content
-
-    // Step 3: Update or append functions
-    const processedFunctions = new Set();
-    this._functions.forEach((func) => {
-      processedFunctions.add(func.name);
-
-      const description = func.description
-        ? `/*\n    ${func.description}\n` +
-          func.params
-            .map((p) => `    @param ${p.name} - ${p.type}\n`)
-            .join("") +
-          (func.returns ? `    @return - ${func.returns}\n` : "") +
-          `*/\n`
-        : "";
-
-      const params = func.params.map((p) => `${p.name}: ${p.type}`).join(", ");
-      const returns = func.returns ? `: ${func.returns}` : "";
-      const visibility =
-        func.type === "private" ? "" : func.type ? `${func.type} ` : "";
-
-      const newFunctionText =
-        `${description}${visibility}fun ${func.name}(${params})${returns} {\n` +
-        `    ${func.body}\n` +
-        `}`;
-
-      // Add newlines before function if needed
-      if (newText.length > 0 && !newText.endsWith("\n\n")) {
-        newText += newText.endsWith("\n") ? "\n" : "\n\n";
-      }
-
-      newText += newFunctionText;
-    });
-
-    // Copy over any functions from the original that aren't in our list
-    existingFunctions.forEach((functionText, funcName) => {
-      if (!processedFunctions.has(funcName)) {
-        // Add newlines before function if needed
-        if (newText.length > 0 && !newText.endsWith("\n\n")) {
-          newText += newText.endsWith("\n") ? "\n" : "\n\n";
-        }
-
-        newText += functionText;
-      }
-    });
-
-    // Step 4: Apply updated text to the document
-    editor.edit((editBuilder) => {
-      const fullRange = new vscode.Range(
-        document.positionAt(0),
-        document.positionAt(document.getText().length),
-      );
-      editBuilder.replace(fullRange, newText);
-    });
   }
 
   private async createFunction(func: MoveFunction) {
     console.log(this._functions, "functions");
+    const prompt = `
+${JSON.stringify(this._structs, null, 2)}
+  You are an expert Sui Move developer. Using the above structs as a helper, Complete the function body for the following Move function: Return for me only the function and any other new constant, import or struct created or used. If not just return for me the function.
+  Function Name: ${func.name}
+  Function Type: ${func.type}
+  Description: ${func.description}
+  Parameters: ${func.params}
+  Return Type: ${func.returns}
 
-    const data = await this._assistantView?.completeFunctionBody(
-      func,
-      this._structs,
+
+
+  Note: The option and tx_object modules are being used by default. No need to import them.
+  `;
+    const data = await this._assistantView?.handleUserMessage(
+      prompt,
+      "function",
     );
-    const { functions } = await parseMoveFile(this._context, data as string);
-    const newFunc = functions[0];
+    console.log(data);
 
+    // Parse the response to extract functions, constants, imports and structs
+    const { functions, constants, imports, structs } = parseResponse(
+      data as string,
+    );
+
+    // Process the new function
+    const newFunc = functions[0];
+    console.log(newFunc, "new function");
     const existingFunctionIndex = this._functions.findIndex(
       (f) => f.name === func.name,
     );
-
     if (existingFunctionIndex !== -1) {
       this._functions[existingFunctionIndex] = {
         ...newFunc,
@@ -284,7 +230,57 @@ export class FunctionsView implements vscode.WebviewViewProvider {
       } as MoveFunction);
     }
 
-    this.updateMoveFile(); // Update file content
+    // Process any new constants
+    if (constants && constants.length > 0) {
+      for (const newConstant of constants) {
+        // Check if constant already exists
+        const existingConstantIndex = this._constants.findIndex(
+          (c) => c.name === newConstant.name,
+        );
+
+        if (existingConstantIndex !== -1) {
+          // Update existing constant
+          this._constants[existingConstantIndex] = newConstant;
+        } else {
+          // Add new constant
+          this._constants.push(newConstant);
+        }
+      }
+    }
+
+    // Process any new imports
+    if (imports && imports.length > 0) {
+      for (const newImport of imports) {
+        // Check if the import already exists
+        const importExists = this._imports.some((i) => i === newImport);
+
+        if (!importExists) {
+          // Add new import only if it doesn't exist
+          this._imports.push(newImport);
+        }
+      }
+    }
+
+    // Process any new structs (optional, based on your data model)
+    if (structs && structs.length > 0) {
+      for (const newStruct of structs) {
+        const existingStructIndex = this._structs.findIndex(
+          (s) => s.name === newStruct.name,
+        );
+
+        if (existingStructIndex !== -1) {
+          // Update existing struct
+          this._structs[existingStructIndex] = newStruct;
+        } else {
+          // Add new struct
+          this._structs.push(newStruct);
+        }
+      }
+    }
+
+    // Update file content with all the changes
+    await this.updateMoveFile();
+
     vscode.window.showInformationMessage(
       `Function ${func.name} created successfully!`,
     );

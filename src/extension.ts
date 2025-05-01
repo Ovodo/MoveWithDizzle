@@ -22,6 +22,26 @@ export function activate(context: vscode.ExtensionContext) {
     'Congratulations, your extension "movewithdizzle" is now active!',
   );
 
+  // vscode.workspace.onDidSaveTextDocument((document) => {
+  //   console.log("File saved:", document.fileName);
+  //   if (document === vscode.window.activeTextEditor?.document) {
+  //     // Format on save
+  //     formatMoveFile(context, document.getText());
+  //   }
+  // });
+
+  // vscode.languages.registerDocumentFormattingEditProvider("move", {
+  //   async provideDocumentFormattingEdits(
+  //     document: vscode.TextDocument,
+  //   ): Promise<vscode.TextEdit[]> {
+  //     const firstLine = document.lineAt(0);
+  //     // if (firstLine.text !== "42") {
+  //     const text = await formatMoveFile(context, document.getText());
+  //     return [vscode.TextEdit.insert(firstLine.range.start, "42\n")];
+  //     // }
+  //   },
+  // });
+
   // The command has been defined in the package.json file
   // Now provide the implementation of the command with registerCommand
   // The commandId parameter must match the command field in package.json
@@ -181,7 +201,7 @@ export function activate(context: vscode.ExtensionContext) {
         }
 
         // Get the formatted content
-        const formattedContent = formatMoveFile();
+        const formattedContent = await formatMoveFile(context);
 
         // Get the content above and including module declaration
         const contentAboveModule = fileContent.substring(

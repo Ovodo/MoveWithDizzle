@@ -4,9 +4,11 @@ import * as fs from "fs";
 import * as dotenv from "dotenv";
 
 import { z } from "zod";
-import { MoveFunction } from "./FunctionsView";
+import { MoveFunction } from "../types";
 import { MoveStruct } from "./StructsView";
 import { TestFunction } from "./TestFunctionsView";
+import { MoveConstant } from "../types";
+import { parseMoveFile } from "../utils/help";
 
 // Initialize dotenv when the module loads
 dotenv.config();
@@ -73,7 +75,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
     setTimeout(() => {
       statusBarItem.hide();
       statusBarItem.dispose();
-    }, 3000); // Auto-hide after 3 seconds
+    }, 5000); // Auto-hide after 3 seconds
   }
 
   private async setupMongoVectorStore() {
@@ -91,12 +93,12 @@ export class AssistantView implements vscode.WebviewViewProvider {
       const collection = db.collection(collectionName);
 
       const vectorStore = new MongoDBAtlasVectorSearch(
-        new OpenAIEmbeddings({ model: "text-embedding-3-large" }),
+        new OpenAIEmbeddings({ model: "text-embedding-ada-002" }),
         {
           collection,
           indexName,
           textKey: "text",
-          embeddingKey: "embedding",
+          embeddingKey: "embeddings",
         },
       );
 
@@ -105,6 +107,74 @@ export class AssistantView implements vscode.WebviewViewProvider {
     } catch (error) {
       console.error("Failed to connect to MongoDB:", error);
       throw new Error("Failed to connect to MongoDB vector store");
+    }
+  }
+
+  private async testVectorStore(query: string) {
+    try {
+      const { OpenAIEmbeddings } = await import("@langchain/openai");
+      const embeddings = new OpenAIEmbeddings({
+        model: "text-embedding-ada-002",
+      });
+
+      const queryEmbedding = await embeddings.embedQuery(query);
+
+      console.log(
+        "Generated query embedding with length:",
+        queryEmbedding.length,
+      );
+
+      // Try direct similarity search
+      // const results = await this._vectorStore.similaritySearch(query, 3);
+      const results = await this._vectorStore?.similaritySearch(query, 3, {
+        score_threshold: 0.01, // Lower threshold significantly
+      });
+      console.log("Direct similarity search results:", results);
+
+      return results;
+    } catch (error) {
+      console.error("Vector store test failed:", error);
+      throw error;
+    }
+  }
+
+  private async testRawVectorSearch(query: string) {
+    try {
+      const { OpenAIEmbeddings } = await import("@langchain/openai");
+      const embeddings = new OpenAIEmbeddings({
+        model: "text-embedding-ada-002",
+      });
+      const queryEmbedding = await embeddings.embedQuery(query);
+
+      // Get the MongoDB collection directly
+      console.log(dbName, collectionName, indexName);
+      const db = this._mongoClient.db(dbName);
+      const collection = db.collection(collectionName);
+
+      // Execute raw vector search
+      const results = await collection
+        .aggregate([
+          {
+            $vectorSearch: {
+              queryVector: queryEmbedding,
+              path: "embeddings",
+              // numCandidates: 100, // Try a higher number
+              limit: 5,
+              index: indexName,
+              exact: true,
+            },
+          },
+        ])
+        .toArray();
+
+      console.log(
+        "Raw vector search results:",
+        JSON.stringify(results, null, 2),
+      );
+      return results;
+    } catch (error) {
+      console.error("Raw vector search failed:", error);
+      throw error;
     }
   }
 
@@ -118,10 +188,30 @@ export class AssistantView implements vscode.WebviewViewProvider {
 
     const retriever = vectorStore.asRetriever({
       searchType: "similarity",
-      k: 3,
+      k: 5,
     });
     const GraphState = Annotation.Root({
       messages: Annotation<(typeof BaseMessage)[]>({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      }),
+      imports: Annotation<string[]>({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      }),
+      testFunctions: Annotation<TestFunction[]>({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      }),
+      constants: Annotation<MoveConstant[]>({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      }),
+      structs: Annotation<MoveStruct[]>({
+        reducer: (x, y) => x.concat(y),
+        default: () => [],
+      }),
+      functions: Annotation<MoveFunction[]>({
         reducer: (x, y) => x.concat(y),
         default: () => [],
       }),
@@ -130,7 +220,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
     const tool = createRetrieverTool(retriever, {
       name: "retrieve_sui_move_docs",
       description:
-        "Search for information about Sui blockchain and Move language to help with debugging and writing smart contracts.",
+        "Search for information about the Sui  Move language to help with debugging and writing smart contracts.",
     });
 
     const tools = [tool];
@@ -140,14 +230,25 @@ export class AssistantView implements vscode.WebviewViewProvider {
       .addNode("retrieve", new ToolNode<typeof GraphState.State>(tools))
       .addNode("gradeDocuments", (state: any) => this.gradeDocuments(state))
       .addNode("generate", (state: any) => this.generate(state))
-      .addNode("analyzeMoveCode", (state: any) => this.analyzeMoveCode(state));
+      .addNode("analyzeMoveCode", async (state: any) => {
+        const fileState = await this.getFileState();
+        state.imports = fileState.imports;
+        state.functions = fileState.functions;
+        state.testFunctions = fileState.testFunctions;
+        state.structs = fileState.structs;
+        state.constants = fileState.constants;
+        return this.analyzeMoveCode(state);
+      });
 
-    workflow.addEdge(START, "analyzeMoveCode");
+    // workflow.addEdge(START, "analyzeMoveCode");
+    workflow.addEdge(START, "agent");
+    workflow.addEdge("agent", "retrieve");
+    workflow.addEdge("retrieve", END);
     workflow.addEdge("analyzeMoveCode", "agent");
     workflow.addConditionalEdges("agent", (state: any) =>
       this.shouldRetrieve(state),
     );
-    workflow.addEdge("retrieve", "gradeDocuments");
+    // workflow.addEdge("retrieve", "gradeDocuments");
     workflow.addConditionalEdges(
       "gradeDocuments",
       (state: any) => this.checkRelevance(state),
@@ -183,7 +284,9 @@ export class AssistantView implements vscode.WebviewViewProvider {
       async (message) => {
         switch (message.command) {
           case "sendMessage":
-            await this.handleUserMessage(message.text);
+            await this.handleUserMessage(message.text, "assistant");
+            // await this.testVectorStore(message.text);
+            // await this.testRawVectorSearch(message.text);
             return;
           case "insertCode":
             await this.insertCodeToEditor(message.code);
@@ -203,14 +306,22 @@ export class AssistantView implements vscode.WebviewViewProvider {
     );
   }
 
-  private async handleUserMessage(text: string) {
+  public async handleUserMessage(
+    text: string,
+    type: string,
+  ): Promise<void | string> {
     if (this._isProcessing) {
       return;
     }
 
-    // Add user message to chat history
-    this.addMessage("user", text);
+    // this.testVectorStore(text);
+    // this.testRawVectorSearch(text);
+    // return;
 
+    // Add user message to chat history
+    if (type === "assistant") {
+      this.addMessage("user", text);
+    }
     // Set processing flag
     this._isProcessing = true;
     this.updateWebviewProcessingState(true);
@@ -231,8 +342,13 @@ export class AssistantView implements vscode.WebviewViewProvider {
       // Process using the agentic RAG workflow
       const response = await this.processWithAgenticRAG(text, fileContent);
 
-      // Add LLM response to chat history
-      this.addMessage("assistant", response);
+      if (type === "assistant") {
+        // Add LLM response to chat history
+        this.addMessage("assistant", response);
+      } else if (type === "function") {
+        this.addMessage("assistant", response);
+        return response;
+      }
     } catch (error) {
       console.error("Error processing message:", error);
       this.addMessage(
@@ -256,9 +372,9 @@ export class AssistantView implements vscode.WebviewViewProvider {
 
     // Include file content in the message if available
     let messageContent = userQuery;
-    if (fileContent) {
-      messageContent = `${userQuery}\n\nHere's the current file content:\n\`\`\`move\n${fileContent}\n\`\`\``;
-    }
+    // if (fileContent) {
+    //   messageContent = `${userQuery}\n\nHere's the current file content:\n\`\`\`move\n${fileContent}\n\`\`\``;
+    // }
 
     const inputs = {
       messages: [new HumanMessage(messageContent)],
@@ -429,7 +545,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
     );
 
     const model = new ChatOpenAI({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       temperature: 0,
     }).bindTools([tool], {
       tool_choice: tool.name,
@@ -523,7 +639,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
     const tools = [tool];
 
     const model = new ChatOpenAI({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       temperature: 0,
     }).bindTools(tools, { tool_choice: "retrieve_sui_move_docs" });
 
@@ -575,7 +691,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
     );
 
     const llm = new ChatOpenAI({
-      model: "gpt-4o",
+      model: "gpt-4.1",
       temperature: 0,
     });
 
@@ -696,6 +812,31 @@ export class AssistantView implements vscode.WebviewViewProvider {
     }
   }
 
+  // Helper method to extract the file state
+  private async getFileState(): Promise<{
+    imports: string[];
+    testFunctions: TestFunction[];
+    functions: MoveFunction[];
+    structs: MoveStruct[];
+    constants: MoveConstant[];
+  }> {
+    const fileContent = this.getCurrentFileContent();
+    if (!fileContent) {
+      return {
+        imports: [],
+        testFunctions: [],
+        functions: [],
+        structs: [],
+        constants: [],
+      };
+    }
+
+    const { imports, testFunctions, functions, structs, constants } =
+      await parseMoveFile(this._context, fileContent);
+
+    return { imports, testFunctions, functions, structs, constants };
+  }
+
   // --- New Methods for Completing Function Bodies ---
 
   /**
@@ -714,7 +855,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
     const prompt = ChatPromptTemplate.fromTemplate(
       `
         {structs}
-        You are an expert Sui Move developer. Using the above information, Complete the function body for the following Move function:
+        You are an expert Sui Move developer. Using the above structs as a helper, Complete the function body for the following Move function:
 
         Function Name: {name}
         Function Type: {type}
@@ -722,12 +863,12 @@ export class AssistantView implements vscode.WebviewViewProvider {
         Parameters: {params}
         Return Type: {returns}
 
-        Make sure verify certain variables and conditions before processing in the function to enhance security.
+        Make sure you verify certain variables and conditions before processing in the function to enhance security.
         `,
     );
 
     const model = new ChatOpenAI({
-      model: "o3-mini",
+      model: "gpt-4.1",
       // temperature: 0,
     });
 

@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -19,6 +19,10 @@
         padding: 15px;
         border-radius: 5px;
       }
+      li {
+        white-space: nowrap;
+        width: 100%;
+      }
       .field-row {
         display: flex;
         gap: 10px;
@@ -27,6 +31,13 @@
       }
       .field-name {
         width: 50%;
+      }
+      .field-type-container {
+        display: flex;
+        gap: 5px;
+      }
+      .nested-type {
+        display: none;
       }
       .struct-list {
         margin-top: 20px;
@@ -45,7 +56,7 @@
     </style>
   </head>
   <body>
-    <h2 class="text-sm text-red-700">Move Struct Creators</h2>
+    <h2 class="text-sm text-red-700">Move Struct Creator</h2>
     <form id="structForm" class="struct-form">
       <input type="text" id="structName" placeholder="Struct Name" required />
       <input type="hidden" id="originalStructName" value="" />
@@ -72,9 +83,14 @@
             placeholder="Field Name"
             required
           />
-          <select class="field-type">
-            <!-- Default types -->
-          </select>
+          <div class="field-type-container">
+            <select class="field-type" onchange="handleTypeChange(this)">
+              <!-- Default types -->
+            </select>
+            <select class="nested-type">
+              <!-- Will be populated with the same options -->
+            </select>
+          </div>
           <button type="button" onclick="addField()">+</button>
         </div>
       </div>
@@ -85,7 +101,7 @@
       </button>
     </form>
     <div class="struct-list text-green-500" id="structList">
-      <h3>Saved Structssss</h3>
+      <h3>Saved Structs</h3>
       <!-- Structs will be dynamically populated here -->
     </div>
 
@@ -133,7 +149,36 @@
             }
             select.appendChild(optionEl);
           });
+          // Check if we should show the nested type selector
+          handleTypeChange(select);
         });
+
+        // Also populate all nested-type selectors
+        document.querySelectorAll("select.nested-type").forEach((select) => {
+          const currentValue = select.value;
+          select.innerHTML = "";
+          allOptions.forEach((opt) => {
+            const optionEl = document.createElement("option");
+            optionEl.value = opt.value;
+            optionEl.textContent = opt.label;
+            if (currentValue === opt.value) {
+              optionEl.selected = true;
+            }
+            select.appendChild(optionEl);
+          });
+        });
+      }
+
+      function handleTypeChange(selectElement) {
+        const selectedType = selectElement.value;
+        const container = selectElement.closest(".field-type-container");
+        const nestedTypeSelect = container.querySelector(".nested-type");
+
+        if (selectedType === "Option" || selectedType === "vector") {
+          nestedTypeSelect.style.display = "inline-block";
+        } else {
+          nestedTypeSelect.style.display = "none";
+        }
       }
 
       function addField() {
@@ -141,12 +186,17 @@
         const newFieldRow = document.createElement("div");
         newFieldRow.className = "field-row";
         newFieldRow.innerHTML = `
-        <input type="text" class="field-name" placeholder="Field Name" required>
-        <select class="field-type">
-          <!-- Options will be populated by populateTypeOptions -->
-        </select>
-        <button type="button" onclick="this.parentElement.remove()">-</button>
-      `;
+          <input type="text" class="field-name" placeholder="Field Name" required>
+          <div class="field-type-container">
+            <select class="field-type" onchange="handleTypeChange(this)">
+              <!-- Options will be populated by populateTypeOptions -->
+            </select>
+            <select class="nested-type">
+              <!-- Will be populated with the same options -->
+            </select>
+          </div>
+          <button type="button" onclick="this.parentElement.remove()">-</button>
+        `;
         container.appendChild(newFieldRow);
         // Re-populate type options after adding new row
         populateTypeOptions(persistedState.structs || []);
@@ -160,14 +210,19 @@
           .forEach((checkbox) => (checkbox.checked = false));
         const fieldsContainer = document.getElementById("fieldsContainer");
         fieldsContainer.innerHTML = `
-        <div class="field-row">
-          <input type="text" class="field-name" placeholder="Field Name" required>
-          <select class="field-type">
-            <!-- Options will be populated -->
-          </select>
-          <button type="button" onclick="addField()">+</button>
-        </div>
-      `;
+          <div class="field-row">
+            <input type="text" class="field-name" placeholder="Field Name" required>
+            <div class="field-type-container">
+              <select class="field-type" onchange="handleTypeChange(this)">
+                <!-- Options will be populated -->
+              </select>
+              <select class="nested-type">
+                <!-- Will be populated with the same options -->
+              </select>
+            </div>
+            <button type="button" onclick="addField()">+</button>
+          </div>
+        `;
         // Populate type options in the reset row
         populateTypeOptions(persistedState.structs || []);
         document.getElementById("submitButton").textContent = "Create Struct";
@@ -184,21 +239,34 @@
         const capitalizedStructName =
           structName.charAt(0).toUpperCase() + structName.slice(1);
         const abilities = Array.from(
-          document.querySelectorAll('input[name="ability"]:checked')
+          document.querySelectorAll('input[name="ability"]:checked'),
         ).map((checkbox) => checkbox.value);
 
         const fields = Array.from(
-          document.querySelectorAll("#fieldsContainer .field-row")
+          document.querySelectorAll("#fieldsContainer .field-row"),
         )
           .filter(
             (row) =>
               row.querySelector(".field-name") &&
-              row.querySelector(".field-type")
+              row.querySelector(".field-type"),
           )
-          .map((row) => ({
-            name: row.querySelector(".field-name").value,
-            type: row.querySelector(".field-type").value,
-          }));
+          .map((row) => {
+            const fieldTypeSelect = row.querySelector(".field-type");
+            const fieldType = fieldTypeSelect.value;
+            let finalType = fieldType;
+
+            // If this is Option or vector, add the nested type
+            if (fieldType === "Option" || fieldType === "vector") {
+              const nestedTypeSelect = row.querySelector(".nested-type");
+              const nestedType = nestedTypeSelect.value;
+              finalType = `${fieldType}<${nestedType}>`;
+            }
+
+            return {
+              name: row.querySelector(".field-name").value,
+              type: finalType,
+            };
+          });
 
         const struct = { name: capitalizedStructName, abilities, fields };
 
@@ -216,21 +284,34 @@
         const originalStructName =
           document.getElementById("originalStructName").value;
         const abilities = Array.from(
-          document.querySelectorAll('input[name="ability"]:checked')
+          document.querySelectorAll('input[name="ability"]:checked'),
         ).map((checkbox) => checkbox.value);
 
         const fields = Array.from(
-          document.querySelectorAll("#fieldsContainer .field-row")
+          document.querySelectorAll("#fieldsContainer .field-row"),
         )
           .filter(
             (row) =>
               row.querySelector(".field-name") &&
-              row.querySelector(".field-type")
+              row.querySelector(".field-type"),
           )
-          .map((row) => ({
-            name: row.querySelector(".field-name").value,
-            type: row.querySelector(".field-type").value,
-          }));
+          .map((row) => {
+            const fieldTypeSelect = row.querySelector(".field-type");
+            const fieldType = fieldTypeSelect.value;
+            let finalType = fieldType;
+
+            // If this is Option or vector, add the nested type
+            if (fieldType === "Option" || fieldType === "vector") {
+              const nestedTypeSelect = row.querySelector(".nested-type");
+              const nestedType = nestedTypeSelect.value;
+              finalType = `${fieldType}<${nestedType}>`;
+            }
+
+            return {
+              name: row.querySelector(".field-name").value,
+              type: finalType,
+            };
+          });
 
         const struct = { name: structName, abilities, fields };
 
@@ -271,30 +352,80 @@
         persistedState.structs = structs;
         const structList = document.getElementById("structList");
         structList.innerHTML = "<h3>Saved Structs</h3>";
+
         structs.forEach((struct) => {
           const structItem = document.createElement("details");
-          structItem.innerHTML = `
-          <summary> <strong>${struct.name}</strong> <i>has</i> ${
+          const summary = document.createElement("summary");
+          summary.innerHTML = `<strong>${struct.name}</strong> <i>has</i> ${
             struct.abilities.join(", ") || "None"
-          }  </summary>
-          <ul>
-            ${struct.fields
-              .map((field) => `<li>${field.name}: ${field.type}</li>`)
-              .join("")}
-          </ul>
-          <div class="struct-actions">
-            <button onclick="editStruct('${struct.name}')">Edit</button>
-            <button class="delete-button" onclick="deleteStruct('${
-              struct.name
-            }')">Delete</button>
-          </div>
-        `;
+          }`;
+          structItem.appendChild(summary);
+
+          const ul = document.createElement("ul");
+
+          struct.fields.forEach((field) => {
+            console.log("Field type before display:", field.type);
+            const li = document.createElement("li");
+            // Use textContent instead of innerHTML to avoid potential HTML parsing issues
+            li.textContent = `${field.name}: ${field.type}`;
+            ul.appendChild(li);
+          });
+
+          structItem.appendChild(ul);
+
+          const actionsDiv = document.createElement("div");
+          actionsDiv.className = "struct-actions";
+          actionsDiv.innerHTML = `
+      <button onclick="editStruct('${struct.name}')">Edit</button>
+      <button class="delete-button" onclick="deleteStruct('${struct.name}')">Delete</button>
+    `;
+
+          structItem.appendChild(actionsDiv);
           structList.appendChild(structItem);
         });
 
         // Re-populate type options for all select elements with updated structs
         populateTypeOptions(structs);
         vscode.setState({ structs });
+      }
+      function parseTypeString(typeString) {
+        // Handle cases where typeString could be undefined or null
+        if (!typeString) {
+          return {
+            mainType: "",
+            nestedType: null,
+          };
+        }
+
+        // Check if it's a parameterized type like "vector<u64>" or "Option<address>"
+        // Using a more flexible regex that can handle whitespace and different formats
+        const match = typeString.match(/^(vector|Option)\s*<\s*(.+?)\s*>\s*$/i);
+        if (match) {
+          return {
+            mainType: match[1],
+            nestedType: match[2].trim(),
+          };
+        }
+
+        // If we don't have a match but the string contains "vector" or "Option"
+        // Try a fallback approach to extract potential type information
+        if (typeString.includes("vector") || typeString.includes("Option")) {
+          // Look for anything between < and >
+          const nestedMatch = typeString.match(/<\s*(.+?)\s*>/);
+          if (nestedMatch) {
+            const mainTypeMatch = typeString.match(/(vector|Option)/i);
+            return {
+              mainType: mainTypeMatch ? mainTypeMatch[1] : typeString,
+              nestedType: nestedMatch[1].trim(),
+            };
+          }
+        }
+
+        // Default case - not a parameterized type
+        return {
+          mainType: typeString,
+          nestedType: null,
+        };
       }
 
       function editStruct(structName) {
@@ -316,7 +447,7 @@
           // Check abilities
           struct.abilities.forEach((ability) => {
             const checkbox = document.querySelector(
-              `input[name="ability"][value="${ability}"]`
+              `input[name="ability"][value="${ability}"]`,
             );
             if (checkbox) {
               checkbox.checked = true;
@@ -325,23 +456,36 @@
 
           // Populate fields
           const fieldsContainer = document.getElementById("fieldsContainer");
-          fieldsContainer.innerHTML =
-            '<button type="button" onclick="addField()">+</button>'; // Clear existing fields
-          // const addItem =''
-          // fieldsContainer.appendChild(addItem);
+          fieldsContainer.innerHTML = ""; // Clear existing fields
 
           struct.fields.forEach((field) => {
             const fieldRow = document.createElement("div");
             fieldRow.className = "field-row";
+
+            // Parse the type to handle parameterized types
+            const { mainType, nestedType } = parseTypeString(field.type);
+
             fieldRow.innerHTML = `
-        <input type="text" class="field-name" placeholder="Field Name" value="${field.name}" required>
-        <select class="field-type">
-          <!-- Options will be populated by populateTypeOptions -->
-        </select>
-        <button type="button" onclick="this.parentElement.remove()">-</button>
-      `;
+              <input type="text" class="field-name" placeholder="Field Name" value="${field.name}" required>
+              <div class="field-type-container">
+                <select class="field-type" onchange="handleTypeChange(this)">
+                  <!-- Options will be populated by populateTypeOptions -->
+                </select>
+                <select class="nested-type">
+                  <!-- Options will be populated by populateTypeOptions -->
+                </select>
+              </div>
+              <button type="button" onclick="this.parentElement.remove()">-</button>
+            `;
             fieldsContainer.appendChild(fieldRow);
           });
+
+          // Add the + button for new fields
+          const addButton = document.createElement("button");
+          addButton.type = "button";
+          addButton.textContent = "+";
+          addButton.onclick = addField;
+          fieldsContainer.appendChild(addButton);
 
           // Re-populate type options for the new field rows
           populateTypeOptions(persistedState.structs);
@@ -350,18 +494,31 @@
           document
             .querySelectorAll("#fieldsContainer .field-row")
             .forEach((row, index) => {
-              const select = row.querySelector(".field-type");
               const fieldType = struct.fields[index].type;
-              console.log(
-                struct.fields[index].name == "event" ? fieldType : "null"
-              );
+              const { mainType, nestedType } = parseTypeString(fieldType);
 
-              // Set the selected option
-              Array.from(select.options).forEach((option) => {
-                if (fieldType.includes(option.value)) {
+              const fieldTypeSelect = row.querySelector(".field-type");
+              const nestedTypeSelect = row.querySelector(".nested-type");
+
+              // Set the main type
+              Array.from(fieldTypeSelect.options).forEach((option) => {
+                if (option.value === mainType) {
                   option.selected = true;
                 }
               });
+
+              // Handle nested type if present
+              if (nestedType) {
+                Array.from(nestedTypeSelect.options).forEach((option) => {
+                  if (option.value === nestedType) {
+                    option.selected = true;
+                  }
+                });
+                // Show the nested type selector
+                nestedTypeSelect.style.display = "inline-block";
+              } else {
+                nestedTypeSelect.style.display = "none";
+              }
             });
 
           // Change submit button text and show cancel button

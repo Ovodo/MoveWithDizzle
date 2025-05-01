@@ -99,7 +99,7 @@
 //   const docs = await Promise.all(
 //     urls
 //       .filter((url) => url) // Filter out empty URLs
-//       .map((url) => new CheerioWebBaseLoader(url).load())
+//       .map((url) => new CheerioWebBaseLoader(url).load()),
 //   );
 //   const docsList = docs.flat();
 //   console.log(`Loaded ${docsList.length} documents`);
@@ -122,11 +122,11 @@
 //       indexName,
 //       textKey: "text",
 //       embeddingKey: "embedding",
-//     }
+//     },
 //   );
 
 //   console.log(
-//     `Successfully stored ${docSplits.length} document chunks in MongoDB Atlas`
+//     `Successfully stored ${docSplits.length} document chunks in MongoDB Atlas`,
 //   );
 
 //   // Optional: Create a simple test query to verify everything works
@@ -151,4 +151,4 @@
 //     process.exit(1);
 //   });
 
-console.log("hello");
+console.log("hellos");

@@ -15,7 +15,7 @@ export interface FunctionParam {
   /**
    * Whether the parameter is mutable
    */
-  isMutable: boolean;
+  isMutable?: boolean;
 
   /**
    * Description or documentation for the parameter
@@ -40,7 +40,7 @@ export interface MoveFunction {
   /**
    * Type parameters for generic functions
    */
-  typeParameters: string[];
+  typeParameters?: string[];
 
   /**
    * Parameters of the function
@@ -65,12 +65,12 @@ export interface MoveFunction {
   /**
    * Whether the function is a native function
    */
-  isNative: boolean;
+  isNative?: boolean;
 
   /**
    * Whether the function is a macro function
    */
-  isMacro: boolean;
+  isMacro?: boolean;
 }
 
 /**
@@ -105,7 +105,7 @@ export interface MoveStruct {
   /**
    * Type parameters for generic structs
    */
-  typeParameters: string[];
+  typeParameters?: string[];
 
   /**
    * Fields contained in the struct
