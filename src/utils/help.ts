@@ -911,8 +911,8 @@ export async function updateMoveFileGeneral(
 
   // Merge updates
   const merged = { ...parsed, ...updates };
-  console.log("Parsed:", parsed);
-  console.log("Merged:", merged);
+  // console.log("Parsed:", parsed);
+  // console.log("Merged:", merged);
 
   // Extract the module declaration (header)
   const text = editor.document.getText();
@@ -1041,7 +1041,7 @@ export async function updateMoveFileGeneral(
               f.typeParameters?.length ? `<${f.typeParameters.join(", ")}>` : ""
             }(${f.params
               ?.map((p) => `${p.isMutable ? "mut " : ""}${p.name}: ${p.type}`)
-              ?.join(", ")})${f.returns ? `: ${f.returns}` : ""} {\n    ${
+              ?.join(", ")})${f.returns ? `${f.returns}` : ""} {\n    ${
               f.body
             }\n}`,
           ),

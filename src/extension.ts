@@ -12,6 +12,7 @@ import { ConstantsView } from "./panels/ConstView";
 import { ImportsView } from "./panels/ImportsView";
 import { formatMoveFile } from "./utils/helpers";
 import { TestFunctionsView } from "./panels/TestFunctionsView";
+import { SuiExamplesView } from "./panels/SuiExamplesView";
 
 // This method is called when your extension is activated
 // Your extension is activated the very first time the command is executed
@@ -266,17 +267,14 @@ export function activate(context: vscode.ExtensionContext) {
     new ConstantsView(context),
   );
   context.subscriptions.push(constantsView);
-  const testView = vscode.window.registerWebviewViewProvider(
-    TestFunctionsView.viewType,
-    new TestFunctionsView(context),
-  );
 
-  context.subscriptions.push(testView);
-  const importsView = vscode.window.registerWebviewViewProvider(
-    ImportsView.viewType,
-    new ImportsView(context),
-  );
+  const testFunctionsView = new TestFunctionsView(context);
+  context.subscriptions.push(testFunctionsView);
 
+  // Initialize Sui Examples View
+  const suiExamplesView = new SuiExamplesView(context);
+
+  const importsView = new ImportsView(context);
   context.subscriptions.push(importsView);
 
   async function startNewContract() {

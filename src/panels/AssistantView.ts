@@ -1,7 +1,6 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import * as dotenv from "dotenv";
 
 import { z } from "zod";
 import { MoveFunction } from "../types";
@@ -9,9 +8,6 @@ import { MoveStruct } from "./StructsView";
 import { TestFunction } from "./TestFunctionsView";
 import { MoveConstant } from "../types";
 import { parseMoveFile } from "../utils/help";
-
-// Initialize dotenv when the module loads
-dotenv.config();
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -35,9 +31,9 @@ export class AssistantView implements vscode.WebviewViewProvider {
   private _isProcessing: boolean = false;
 
   // RAG components
-  private _vectorStore: any | null = null;
-  private _mongoClient: any | null = null;
-  private _agenticWorkflow: any = null;
+  private _vectorStore: any;
+  private _mongoClient: any;
+  private _agenticWorkflow: any;
 
   constructor(private readonly _context: vscode.ExtensionContext) {
     // Load saved chat history on initialization
@@ -93,7 +89,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
       const collection = db.collection(collectionName);
 
       const vectorStore = new MongoDBAtlasVectorSearch(
-        new OpenAIEmbeddings({ model: "text-embedding-ada-002" }),
+        new OpenAIEmbeddings({ model: "text-embedding-3-small" }),
         {
           collection,
           indexName,
@@ -103,6 +99,7 @@ export class AssistantView implements vscode.WebviewViewProvider {
       );
 
       console.log("MongoDB Vector Store initialized successfully");
+
       return { vectorStore, client };
     } catch (error) {
       console.error("Failed to connect to MongoDB:", error);
@@ -112,9 +109,10 @@ export class AssistantView implements vscode.WebviewViewProvider {
 
   private async testVectorStore(query: string) {
     try {
+      console.log(query, "querystinr");
       const { OpenAIEmbeddings } = await import("@langchain/openai");
       const embeddings = new OpenAIEmbeddings({
-        model: "text-embedding-ada-002",
+        model: "text-embedding-3-small",
       });
 
       const queryEmbedding = await embeddings.embedQuery(query);
@@ -139,10 +137,12 @@ export class AssistantView implements vscode.WebviewViewProvider {
   }
 
   private async testRawVectorSearch(query: string) {
+    console.log(query, "querystinr");
+
     try {
       const { OpenAIEmbeddings } = await import("@langchain/openai");
       const embeddings = new OpenAIEmbeddings({
-        model: "text-embedding-ada-002",
+        model: "text-embedding-3-small",
       });
       const queryEmbedding = await embeddings.embedQuery(query);
 
@@ -158,10 +158,10 @@ export class AssistantView implements vscode.WebviewViewProvider {
             $vectorSearch: {
               queryVector: queryEmbedding,
               path: "embeddings",
-              // numCandidates: 100, // Try a higher number
+              numCandidates: 100, // Try a higher number
               limit: 5,
               index: indexName,
-              exact: true,
+              // exact: true,
             },
           },
         ])
@@ -242,13 +242,10 @@ export class AssistantView implements vscode.WebviewViewProvider {
 
     // workflow.addEdge(START, "analyzeMoveCode");
     workflow.addEdge(START, "agent");
-    workflow.addEdge("agent", "retrieve");
-    workflow.addEdge("retrieve", END);
-    workflow.addEdge("analyzeMoveCode", "agent");
     workflow.addConditionalEdges("agent", (state: any) =>
       this.shouldRetrieve(state),
     );
-    // workflow.addEdge("retrieve", "gradeDocuments");
+    workflow.addEdge("retrieve", "gradeDocuments");
     workflow.addConditionalEdges(
       "gradeDocuments",
       (state: any) => this.checkRelevance(state),

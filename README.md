@@ -1,4 +1,3 @@
-
 # MoveWithDizzle VS Code Extension
 
 ## 🚀 Features
@@ -31,8 +30,8 @@
 ## 🛠️ How to Use
 
 ### 1. Getting Started
-- **Install the Extension** from the VS Code Marketplace.
-- **Open a Move Project** (or create a new one).
+- **Install the Extension** Clone the repo and press f5 to open the extension Host .
+- **Open a Move Project** create a new one / optionally paste an already existing code.
 - **Open the Side Panel**: Click the MoveWithDizzle icon in the Activity Bar.
 
 ### 2. Managing Code
@@ -40,7 +39,7 @@
   Use the respective sidebar views to add, edit, or delete items.  
   - Click “Add Function” or “Edit” to open a form.
   - Fill in details and submit.  
-  - The extension updates your `.move` file, preserving comments and formatting.
+  - The extension updates your `.move` file.
 
 - **Test Functions**:  
   Use the “Tests” view to manage test functions.  
@@ -56,22 +55,10 @@
 - **Function Completion**:  
   - In the Functions view, click “Complete Function Body” to let the AI generate a function body based on your struct and parameter context.
 
-### 4. Formatting
-- **Format on Save**:  
-  - The extension auto-formats your Move files on save.
-  - To format manually, right-click in the editor and select “Format Document”.
-
-### 5. MongoDB Integration
-- **Vector Search**:  
-  - The extension connects to your MongoDB Atlas instance for semantic code/document search.
-  - Configure your MongoDB URI and credentials in the extension settings or environment.
-
 ---
 
 ## 💡 Tips
 
-- **Preserving Comments**:  
-  The extension preserves your comments and places them before the relevant code sections.
 - **Section Headings**:  
   Each section (imports, structs, functions, etc.) is clearly marked with stylized comments for easy navigation.
 - **Live Reload**:  
@@ -91,10 +78,7 @@
    Open the “Move Assistant” view, ask a question, or paste code for analysis.
 
 4. **Format Your File**:  
-   Save your `.move` file or use “Format Document” to auto-format.
-
-5. **Test Functions**:  
-   Use the “Tests” view to add and manage test functions.
+   Save your `.move` file.
 
 ---
 
@@ -111,18 +95,16 @@
 
 ---
 
-## 📚 Learn More
-
-- [Move Language Book](https://move-language.github.io/move/)
-- [Sui Documentation](https://docs.sui.io/)
-- [MongoDB Atlas Vector Search](https://www.mongodb.com/products/platform/atlas-vector-search)
-
----
-
 ## 📝 Feedback & Contributions
 
 - Found a bug or have a feature request?  
   Open an issue or pull request on [GitHub](https://github.com/ovodo/movewithdizzle).
+
+---
+
+## Note on AI/Agentic RAG
+
+The AI/agentic RAG feature will currently not work properly because there is no OpenAI API key or MongoDB URL string configured. This feature will be deployed with the application when hosting on the VS Code Marketplace. You can set your own OpenAI key and MongoDB URL for now, but the database will not contain the current context used by the RAG. Further progress is still to be done on this feature before deployment.
 
 ---
 
